@@ -588,12 +588,129 @@ async function executeBuiltInTool(
       }
 
     case "check_availability":
-      // Example: Availability check
-      const date = args.date || new Date().toISOString().split("T")[0]
+      // Not needed - KB handles availability
       return {
-        date,
-        available: true,
-        slots: ["09:00", "10:00", "14:00", "15:00"]
+        message: "Müsaitlik bilgileri Knowledge Base'den alınmaktadır."
+      }
+
+    case "create_reservation":
+      // Create hotel reservation
+      try {
+        console.log("[create_reservation] Starting with args:", JSON.stringify(args, null, 2))
+        console.log("[create_reservation] Call info:", { 
+          callId: call?.id, 
+          retellCallId: call?.retellCallId,
+          hasBot: !!call?.bot,
+          organizationId: call?.bot?.organizationId
+        })
+
+        // Validate call context
+        if (!call) {
+          throw new Error("Call record is missing")
+        }
+
+        if (!call.id) {
+          throw new Error("Call ID is missing - call may not be saved yet")
+        }
+
+        if (!call.bot || !call.bot.organizationId) {
+          throw new Error("Call context missing organization/bot info")
+        }
+
+        const organizationId = call.bot.organizationId
+        console.log("[create_reservation] Organization ID:", organizationId)
+
+        // Validate required arguments
+        if (!args.checkIn || !args.checkOut || !args.guests || !args.guestName || !args.roomType) {
+          throw new Error("Required fields missing: checkIn, checkOut, guests, guestName, and roomType are required")
+        }
+
+        // Validate date format
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/
+        if (!dateRegex.test(args.checkIn) || !dateRegex.test(args.checkOut)) {
+          throw new Error("Invalid date format. Dates must be in YYYY-MM-DD format")
+        }
+
+        // Find room type in this organization
+        const roomType = await prisma.roomType.findFirst({
+          where: {
+            organizationId: organizationId,
+            name: { contains: args.roomType, mode: "insensitive" },
+            isActive: true
+          },
+          include: {
+            customer: true
+          }
+        })
+
+        if (!roomType) {
+          throw new Error(`Oda tipi '${args.roomType}' bulunamadı. Lütfen tam adını söyleyiniz.`)
+        }
+
+        // Get guest phone from args or call
+        let guestPhone = args.guestPhone || call.fromNumber || null
+
+        // If still no phone and we have call_id, try to fetch from Retell
+        if (!guestPhone && call.retellCallId) {
+          try {
+            const retellCall = await callRetellApi("GET", `/get-call/${call.retellCallId}`, null, organizationId)
+            guestPhone = retellCall?.from_number || null
+          } catch (err) {
+            console.warn("[create_reservation] Could not retrieve phone from Retell:", err)
+          }
+        }
+
+        // Validate check-in/check-out dates
+        const checkInDate = new Date(args.checkIn)
+        const checkOutDate = new Date(args.checkOut)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+
+        if (checkInDate < today) {
+          throw new Error("Check-in tarihi bugünden önce olamaz")
+        }
+
+        if (checkOutDate <= checkInDate) {
+          throw new Error("Check-out tarihi check-in tarihinden sonra olmalıdır")
+        }
+
+        // Create reservation
+        const reservation = await prisma.reservation.create({
+          data: {
+            customerId: roomType.customerId,
+            callId: call.id,
+            guestName: args.guestName,
+            guestPhone: guestPhone || "Unknown",
+            checkIn: checkInDate,
+            checkOut: checkOutDate,
+            numberOfGuests: args.guests,
+            numberOfRooms: 1, // Default to 1 room
+            roomTypeId: roomType.id,
+            roomType: args.roomType,
+            status: "PENDING",
+            specialRequests: args.specialRequests || null
+          }
+        })
+
+        // Generate confirmation code (last 6 characters of ID, uppercase)
+        const confirmationCode = reservation.id.slice(-6).toUpperCase()
+
+        console.log("[create_reservation] Reservation created successfully:", reservation.id)
+
+        return {
+          success: true,
+          confirmationCode: confirmationCode,
+          reservation_id: reservation.id,
+          message: `Rezervasyon oluşturuldu! Onay kodunuz: ${confirmationCode}. Bizi tercih ettiğiniz için teşekkürler.`
+        }
+
+      } catch (err: any) {
+        console.error("[create_reservation] Failed to create reservation:", err)
+        console.error("[create_reservation] Error stack:", err.stack)
+        return {
+          error: true,
+          message: `Rezervasyon oluşturulurken bir hata oluştu: ${err.message || err}`
+        }
       }
 
     default:
