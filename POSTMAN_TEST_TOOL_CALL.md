@@ -360,18 +360,53 @@ Hata varsa:
 - Veya `agent_id` ekleyin
 - Veya sistemde en az bir bot olduğundan emin olun
 
-### Hata: "Tool 'create_order' not found"
-**Sebep:** Bulunan bot'ta `create_order` tool'u tanımlı değil
-**Çözüm:**
-1. Bot'u güncelleyin (herhangi bir field değiştirip kaydedin)
-2. RESTAURANT tipinde bot olduğundan emin olun
-3. Bot'un `customTools` field'ında `create_order` tool'u olduğunu kontrol edin
+### ❌ Hata: "Tool 'create_order' not found. Available tools: (none)"
 
-**Bot'u güncellemek için:**
+**Sebep:** Bulunan bot'ta `create_order` tool'u tanımlı değil veya `customTools` boş
+
+**Geçici Çözüm (Otomatik - Yeni!):** 
+- ✅ Kod artık otomatik olarak built-in tool'ları (`create_order`, `create_reservation`, `check_availability`) inject ediyor
+- Eğer hala hata alıyorsanız, aşağıdaki kalıcı çözümü uygulayın
+
+**Kalıcı Çözüm (Önerilen):**
+
+#### Yöntem 1: Bot'u UI'dan Güncellemek (En Kolay)
+1. Admin panel'e giriş yapın (`http://localhost:3000`)
+2. Bot ayarlarına gidin
+3. Herhangi bir field'ı değiştirip kaydedin (örn: `generalPrompt`)
+4. Sistem RESTAURANT tipindeki bot'lar için otomatik olarak `create_order` tool'unu ekler
+
+#### Yöntem 2: Postman ile Bot'u Güncellemek
+
+**Adım 1: Bot ID'sini Bulun**
 ```bash
-PUT /api/bots/{botId}
-# Herhangi bir field değiştirip kaydedin (örn: generalPrompt)
+GET http://localhost:3000/api/bots
+
+Headers:
+Cookie: next-auth.session-token=YOUR_SESSION_TOKEN
 ```
+
+Response'dan `id` field'ını kopyalayın.
+
+**Adım 2: Bot'u Güncelleyin (Herhangi Bir Field)**
+```bash
+PUT http://localhost:3000/api/bots/{botId}
+
+Headers:
+Content-Type: application/json
+Cookie: next-auth.session-token=YOUR_SESSION_TOKEN
+
+Body:
+{
+  "generalPrompt": "Mevcut prompt'unuz (herhangi bir değişiklik yapabilirsiniz)"
+}
+```
+
+**Not:** Eğer kullanıcınız `customerType: "RESTAURANT"` ise, sistem otomatik olarak `create_order` tool'unu ekler.
+
+#### Yöntem 3: Tool'u Manuel Eklemek (İleri Seviye)
+
+Detaylar için `ADD_CREATE_ORDER_TOOL.md` dosyasına bakın.
 
 ### Hata: "No bot found in system"
 **Sebep:** Veritabanında hiç bot yok

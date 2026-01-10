@@ -290,13 +290,45 @@ export async function POST(req: NextRequest) {
     }
 
     // Find the tool definition
-    const tools = (call.bot.customTools as any[]) || []
-    const toolDef = tools.find(t => t.function?.name === toolNameToUse)
+    let tools = (call.bot.customTools as any[]) || []
+    console.log(`[tool-call] Bot found - ID: ${call.bot.organizationId}, Tools count: ${tools.length}`)
+    console.log(`[tool-call] Bot tools:`, JSON.stringify(tools.map((t: any) => t.function?.name), null, 2))
+    
+    let toolDef = tools.find(t => t.function?.name === toolNameToUse)
+
+    // If tool not found and it's a built-in tool (create_order, create_reservation), try to inject it
+    if (!toolDef && (toolNameToUse === "create_order" || toolNameToUse === "create_reservation" || toolNameToUse === "check_availability")) {
+      console.log(`[tool-call] Tool '${toolNameToUse}' not found in bot's customTools, attempting to inject built-in tool...`)
+      
+      try {
+        // Import built-in tools
+        const { CREATE_ORDER_TOOL, CREATE_RESERVATION_TOOL, CHECK_AVAILABILITY_TOOL } = await import("@/lib/tools")
+        
+        let builtInTool = null
+        if (toolNameToUse === "create_order") {
+          builtInTool = CREATE_ORDER_TOOL
+        } else if (toolNameToUse === "create_reservation") {
+          builtInTool = CREATE_RESERVATION_TOOL
+        } else if (toolNameToUse === "check_availability") {
+          builtInTool = CHECK_AVAILABILITY_TOOL
+        }
+        
+        if (builtInTool) {
+          // Use the built-in tool definition (in-memory, doesn't update DB)
+          toolDef = builtInTool
+          tools = [...tools, builtInTool]
+          console.log(`[tool-call] ✓ Injected built-in tool '${toolNameToUse}' for this request`)
+        }
+      } catch (importError) {
+        console.error("[tool-call] Failed to import built-in tools:", importError)
+      }
+    }
 
     if (!toolDef) {
-      console.error("Tool not found:", toolNameToUse, "Available tools:", tools.map((t: any) => t.function?.name))
+      console.error("Tool not found:", toolNameToUse, "Available tools:", tools.map((t: any) => t.function?.name || 'null'))
+      console.error("Bot customTools raw:", JSON.stringify(call.bot.customTools, null, 2))
       return NextResponse.json({
-        result: `Error: Tool '${toolNameToUse || 'unknown'}' not found. Available tools: ${tools.map((t: any) => t.function?.name || 'unknown').join(', ')}`,
+        result: `Error: Tool '${toolNameToUse || 'unknown'}' not found. Available tools: ${tools.map((t: any) => t.function?.name || 'unknown').join(', ') || '(none)'}. Please update the bot to include this tool.`,
         tool_call_id
       }, { status: 200 }) // Return 200 so Retell doesn't retry
     }
