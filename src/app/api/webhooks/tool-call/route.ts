@@ -60,37 +60,106 @@ export async function POST(req: NextRequest) {
         finalRetellCallId = `test_${Date.now()}_${Math.random().toString(36).substring(7)}`
         isTestCall = true
       } else {
-        // Try to find agent_id from any available bot (fallback for testing)
-        // This is less ideal but allows testing when no context is provided
-        console.log("No call_id or agent_id found, attempting to find any available bot for testing...")
+        // Try to find bot based on tool_name (smart fallback for testing)
+        // For create_order, find a restaurant bot. For create_reservation, find a hotel bot.
+        console.log("No call_id or agent_id found, attempting to find suitable bot based on tool_name:", toolNameToUse)
         try {
-          const anyBot = await prisma.bot.findFirst({
-            select: {
-              id: true,
-              retellAgentId: true,
-              organizationId: true,
-              customTools: true
-            },
-            orderBy: { createdAt: 'desc' }
-          })
+          let anyBot: any = null
+          
+          // Try to find bot that has the tool defined (best match)
+          if (toolNameToUse === "create_order") {
+            // Find a bot that has create_order tool (usually restaurant bots)
+            const bots = await prisma.bot.findMany({
+              select: {
+                id: true,
+                retellAgentId: true,
+                organizationId: true,
+                customTools: true
+              },
+              orderBy: { createdAt: 'desc' }
+            })
+            
+            // Find bot with create_order tool
+            for (const bot of bots) {
+              const tools = (bot.customTools as any[]) || []
+              if (tools.some((t: any) => t.function?.name === "create_order")) {
+                anyBot = bot
+                console.log("Found bot with create_order tool:", bot.id)
+                break
+              }
+            }
+            
+            // If no bot with tool found, find any bot from restaurant organization
+            if (!anyBot) {
+              const restaurantOrg = await prisma.user.findFirst({
+                where: { customerType: "RESTAURANT" },
+                select: { organizationId: true }
+              })
+              
+              if (restaurantOrg) {
+                anyBot = await prisma.bot.findFirst({
+                  where: { organizationId: restaurantOrg.organizationId },
+                  select: {
+                    id: true,
+                    retellAgentId: true,
+                    organizationId: true,
+                    customTools: true
+                  },
+                  orderBy: { createdAt: 'desc' }
+                })
+              }
+            }
+          } else if (toolNameToUse === "create_reservation") {
+            // Similar logic for hotel reservations
+            const hotelOrg = await prisma.user.findFirst({
+              where: { customerType: "HOTEL" },
+              select: { organizationId: true }
+            })
+            
+            if (hotelOrg) {
+              anyBot = await prisma.bot.findFirst({
+                where: { organizationId: hotelOrg.organizationId },
+                select: {
+                  id: true,
+                  retellAgentId: true,
+                  organizationId: true,
+                  customTools: true
+                },
+                orderBy: { createdAt: 'desc' }
+              })
+            }
+          }
+          
+          // Final fallback: any bot
+          if (!anyBot) {
+            anyBot = await prisma.bot.findFirst({
+              select: {
+                id: true,
+                retellAgentId: true,
+                organizationId: true,
+                customTools: true
+              },
+              orderBy: { createdAt: 'desc' }
+            })
+          }
           
           if (anyBot) {
-            console.log("Found fallback bot for testing:", anyBot.id)
+            console.log("Found fallback bot for testing:", anyBot.id, "(tool:", toolNameToUse + ")")
             agentId = anyBot.retellAgentId
             finalRetellCallId = `test_${Date.now()}_${Math.random().toString(36).substring(7)}`
             isTestCall = true
           } else {
-            console.error("call_id is missing and no agent_id found. Full body:", JSON.stringify(body, null, 2))
+            console.error("No bot found in database for testing. Full body:", JSON.stringify(body, null, 2))
             return NextResponse.json({
-              result: `Error executing tool: call_id is required but was not provided in the request. Please ensure the request includes 'call_id', 'callId', or 'agent_id' field for testing. Received body keys: ${allKeys.join(', ')}`,
+              result: `Error executing tool: No bot found in system. Please create a bot first or provide 'call_id' or 'agent_id' in the request. Received body keys: ${allKeys.join(', ')}`,
               tool_call_id: tool_call_id || "unknown"
             }, { status: 200 }) // Return 200 so Retell doesn't retry
           }
-        } catch (fallbackError) {
+        } catch (fallbackError: any) {
           console.error("Fallback bot search failed:", fallbackError)
           console.error("call_id is missing from request body. Full body:", JSON.stringify(body, null, 2))
           return NextResponse.json({
-            result: `Error executing tool: call_id is required but was not provided in the request. Please ensure the request includes 'call_id', 'callId', or 'agent_id' field for testing. Received body keys: ${allKeys.join(', ')}`,
+            result: `Error executing tool: Failed to find bot for testing. ${fallbackError.message || 'Please provide call_id, callId, or agent_id field.'} Received body keys: ${allKeys.join(', ')}`,
             tool_call_id: tool_call_id || "unknown"
           }, { status: 200 }) // Return 200 so Retell doesn't retry
         }
