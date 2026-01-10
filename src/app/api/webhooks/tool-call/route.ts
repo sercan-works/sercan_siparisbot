@@ -14,26 +14,42 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
 
-    // Extract tool call information
+    // Extract tool call information - support both snake_case and camelCase
     const {
       call_id,
+      callId, // Alternative camelCase format
       tool_call_id: extractedToolCallId,
       tool_name,
+      toolName, // Alternative camelCase format
       arguments: toolArgs,
     } = body
 
-    tool_call_id = extractedToolCallId
+    // Use call_id or callId (camelCase alternative)
+    const retellCallId = call_id || callId
+    tool_call_id = extractedToolCallId || body.tool_call_id || body.toolCallId
+    const toolNameToUse = tool_name || toolName
 
-    console.log("Tool call received:", {
-      call_id,
+    console.log("Tool call received - full body:", JSON.stringify(body, null, 2))
+    console.log("Tool call received - extracted:", {
+      call_id: retellCallId,
       tool_call_id,
-      tool_name,
-      arguments: toolArgs
+      tool_name: toolNameToUse,
+      arguments: toolArgs,
+      has_agent_id: !!body.agent_id || !!body.agentId
     })
+
+    // Validate call_id is provided
+    if (!retellCallId) {
+      console.error("call_id is missing from request body. Full body:", JSON.stringify(body, null, 2))
+      return NextResponse.json({
+        result: `Error executing tool: call_id is required but was not provided in the request. Please ensure the request includes 'call_id' or 'callId' field.`,
+        tool_call_id: tool_call_id || "unknown"
+      }, { status: 200 }) // Return 200 so Retell doesn't retry
+    }
 
     // Find the call in database to get organization context
     let call = await prisma.call.findUnique({
-      where: { retellCallId: call_id },
+      where: { retellCallId: retellCallId },
       include: {
         bot: {
           select: {
@@ -45,7 +61,7 @@ export async function POST(req: NextRequest) {
     })
 
     if (!call) {
-      console.log("Call not found in DB, attempting to fetch from Retell API:", call_id)
+      console.log("Call not found in DB, attempting to fetch from Retell API:", retellCallId)
 
       try {
         // First find bot by agent_id if available in body metadata
@@ -53,10 +69,11 @@ export async function POST(req: NextRequest) {
         let retellCall: any = null
         let bot: any = null
 
-        // Try to find bot first if agent_id is in request metadata
-        if (body.agent_id) {
+        // Try to find bot first if agent_id is in request metadata (support both formats)
+        const agentId = body.agent_id || body.agentId
+        if (agentId) {
           bot = await prisma.bot.findUnique({
-            where: { retellAgentId: body.agent_id },
+            where: { retellAgentId: agentId },
             select: {
               id: true,
               organizationId: true,
@@ -67,7 +84,7 @@ export async function POST(req: NextRequest) {
 
         if (!bot) {
           // Fetch call details from Retell to get agent_id
-          retellCall = await callRetellApi("GET", `/get-call/${call_id}`, null, undefined)
+          retellCall = await callRetellApi("GET", `/get-call/${retellCallId}`, null, undefined)
 
           if (!retellCall || !retellCall.agent_id) {
             throw new Error("Retell call data missing agent_id")
@@ -83,11 +100,11 @@ export async function POST(req: NextRequest) {
             }
           })
         } else {
-          retellCall = { agent_id: body.agent_id } // Use agent_id from body
+          retellCall = { agent_id: agentId } // Use agent_id from body
         }
 
         if (!bot) {
-          throw new Error(`Bot not found for agent_id: ${retellCall.agent_id}`)
+          throw new Error(`Bot not found for agent_id: ${retellCall.agent_id || 'unknown'}`)
         }
 
         // Find owner to link as initiator (fallback)
@@ -102,7 +119,7 @@ export async function POST(req: NextRequest) {
         // Create the missing call record on the fly
         call = await prisma.call.create({
           data: {
-            retellCallId: call_id,
+            retellCallId: retellCallId,
             organizationId: bot.organizationId,
             botId: bot.id,
             initiatedById: owner.id,
@@ -133,7 +150,7 @@ export async function POST(req: NextRequest) {
 
     // Validate call has bot and customTools
     if (!call.bot) {
-      console.error("Bot not found for call:", call_id)
+      console.error("Bot not found for call:", retellCallId)
       return NextResponse.json({
         result: `Error: Bot not found for this call`,
         tool_call_id
@@ -142,12 +159,12 @@ export async function POST(req: NextRequest) {
 
     // Find the tool definition
     const tools = (call.bot.customTools as any[]) || []
-    const toolDef = tools.find(t => t.function?.name === tool_name)
+    const toolDef = tools.find(t => t.function?.name === toolNameToUse)
 
     if (!toolDef) {
-      console.error("Tool not found:", tool_name, "Available tools:", tools.map((t: any) => t.function?.name))
+      console.error("Tool not found:", toolNameToUse, "Available tools:", tools.map((t: any) => t.function?.name))
       return NextResponse.json({
-        result: `Error: Tool '${tool_name}' not found. Available tools: ${tools.map((t: any) => t.function?.name || 'unknown').join(', ')}`,
+        result: `Error: Tool '${toolNameToUse || 'unknown'}' not found. Available tools: ${tools.map((t: any) => t.function?.name || 'unknown').join(', ')}`,
         tool_call_id
       }, { status: 200 }) // Return 200 so Retell doesn't retry
     }
@@ -156,7 +173,7 @@ export async function POST(req: NextRequest) {
     let result: any
 
     try {
-      console.log(`[tool-call] Executing tool: ${tool_name}, has URL: ${!!toolDef.function.url}`)
+      console.log(`[tool-call] Executing tool: ${toolNameToUse}, has URL: ${!!toolDef.function.url}`)
       
       if (toolDef.function.url) {
         // External webhook-based tool
@@ -165,9 +182,9 @@ export async function POST(req: NextRequest) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              call_id,
+              call_id: retellCallId,
               tool_call_id,
-              tool_name,
+              tool_name: toolNameToUse,
               arguments: toolArgs,
               organization_id: call.bot.organizationId
             })
@@ -188,8 +205,8 @@ export async function POST(req: NextRequest) {
         }
       } else {
         // Built-in tool execution logic
-        console.log(`[tool-call] Executing built-in tool: ${tool_name}`)
-        result = await executeBuiltInTool(tool_name, toolArgs, call)
+        console.log(`[tool-call] Executing built-in tool: ${toolNameToUse}`)
+        result = await executeBuiltInTool(toolNameToUse, toolArgs, call)
         console.log(`[tool-call] Built-in tool result:`, result)
       }
 
