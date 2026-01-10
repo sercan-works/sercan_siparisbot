@@ -49,6 +49,7 @@ interface HotelData {
     dailyRates: any[]
     rules: any
     discounts: any[]
+    pricingPrompt: string
   }
   services: {
     free: string[]

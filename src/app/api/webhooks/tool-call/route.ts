@@ -10,16 +10,19 @@ export const dynamic = "force-dynamic"
  * This endpoint is called when an agent invokes a custom tool during a call
  */
 export async function POST(req: NextRequest) {
+  let tool_call_id: string | undefined = undefined
   try {
     const body = await req.json()
 
     // Extract tool call information
     const {
       call_id,
-      tool_call_id,
+      tool_call_id: extractedToolCallId,
       tool_name,
       arguments: toolArgs,
     } = body
+
+    tool_call_id = extractedToolCallId
 
     console.log("Tool call received:", {
       call_id,
