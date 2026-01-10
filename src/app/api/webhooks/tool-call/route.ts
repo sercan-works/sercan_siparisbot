@@ -39,23 +39,61 @@ export async function POST(req: NextRequest) {
     })
 
     // Handle case where call_id is missing but agent_id is provided (test scenario)
+    // Check for agent_id in multiple possible locations
+    let agentId = body.agent_id || body.agentId || 
+                  body.metadata?.agent_id || body.metadata?.agentId ||
+                  body.call?.agent_id || body.call?.agentId
+    
+    // Also check all top-level keys to see what we have
+    const allKeys = Object.keys(body)
+    console.log("All keys in request body:", allKeys)
+    console.log("Body metadata:", body.metadata)
+    console.log("Body call object:", body.call)
+    
     let finalRetellCallId = retellCallId
     let isTestCall = false
     
     if (!retellCallId) {
-      // Check if agent_id is provided for test scenario
-      const agentId = body.agent_id || body.agentId
       if (agentId) {
-        console.log("call_id missing but agent_id provided - creating test call record")
+        console.log("call_id missing but agent_id found - creating test call record with agent_id:", agentId)
         // Generate a test call_id for dashboard testing
         finalRetellCallId = `test_${Date.now()}_${Math.random().toString(36).substring(7)}`
         isTestCall = true
       } else {
-        console.error("call_id is missing from request body. Full body:", JSON.stringify(body, null, 2))
-        return NextResponse.json({
-          result: `Error executing tool: call_id is required but was not provided in the request. Please ensure the request includes 'call_id', 'callId', or 'agent_id' field for testing.`,
-          tool_call_id: tool_call_id || "unknown"
-        }, { status: 200 }) // Return 200 so Retell doesn't retry
+        // Try to find agent_id from any available bot (fallback for testing)
+        // This is less ideal but allows testing when no context is provided
+        console.log("No call_id or agent_id found, attempting to find any available bot for testing...")
+        try {
+          const anyBot = await prisma.bot.findFirst({
+            select: {
+              id: true,
+              retellAgentId: true,
+              organizationId: true,
+              customTools: true
+            },
+            orderBy: { createdAt: 'desc' }
+          })
+          
+          if (anyBot) {
+            console.log("Found fallback bot for testing:", anyBot.id)
+            agentId = anyBot.retellAgentId
+            finalRetellCallId = `test_${Date.now()}_${Math.random().toString(36).substring(7)}`
+            isTestCall = true
+          } else {
+            console.error("call_id is missing and no agent_id found. Full body:", JSON.stringify(body, null, 2))
+            return NextResponse.json({
+              result: `Error executing tool: call_id is required but was not provided in the request. Please ensure the request includes 'call_id', 'callId', or 'agent_id' field for testing. Received body keys: ${allKeys.join(', ')}`,
+              tool_call_id: tool_call_id || "unknown"
+            }, { status: 200 }) // Return 200 so Retell doesn't retry
+          }
+        } catch (fallbackError) {
+          console.error("Fallback bot search failed:", fallbackError)
+          console.error("call_id is missing from request body. Full body:", JSON.stringify(body, null, 2))
+          return NextResponse.json({
+            result: `Error executing tool: call_id is required but was not provided in the request. Please ensure the request includes 'call_id', 'callId', or 'agent_id' field for testing. Received body keys: ${allKeys.join(', ')}`,
+            tool_call_id: tool_call_id || "unknown"
+          }, { status: 200 }) // Return 200 so Retell doesn't retry
+        }
       }
     }
 
@@ -81,8 +119,7 @@ export async function POST(req: NextRequest) {
         let retellCall: any = null
         let bot: any = null
 
-        // Try to find bot first if agent_id is in request metadata (support both formats)
-        const agentId = body.agent_id || body.agentId
+        // Use agentId from earlier extraction (supports multiple locations)
         if (agentId) {
           bot = await prisma.bot.findUnique({
             where: { retellAgentId: agentId },
