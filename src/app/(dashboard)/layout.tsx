@@ -12,7 +12,6 @@ import {
   LogOut,
   Menu,
   X,
-  Building,
   Calendar,
   Sparkles
 } from "lucide-react"
@@ -45,7 +44,6 @@ export default async function DashboardLayout({
     ...(customerType === "RESTAURANT"
       ? [{ name: 'Siparişler', href: `${basePath}/orders`, icon: FileText }]
       : [
-        { name: 'Odalar', href: `${basePath}/rooms`, icon: Building },
         { name: 'Rezervasyonlar', href: `${basePath}/reservations`, icon: Calendar }
       ])
   ]
