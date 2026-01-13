@@ -6,6 +6,8 @@ import { redirect } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import KnowledgeBasesTable from "@/components/knowledge-bases/knowledge-bases-table"
 import DeleteKBDialog from "@/components/knowledge-bases/delete-kb-dialog"
+import HotelKnowledgeForm from "@/components/knowledge-bases/hotel-knowledge-form"
+import RestaurantKnowledgeForm from "@/components/knowledge-bases/restaurant-knowledge-form"
 
 export const dynamic = "force-dynamic"
 
@@ -33,6 +35,9 @@ export default function CustomerKnowledgeBasesPage() {
   const { data: session, status } = useSession()
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [editingKB, setEditingKB] = useState<KnowledgeBase | null>(null)
+  const [selectedType, setSelectedType] = useState<"HOTEL" | "RESTAURANT" | null>(null)
+  const [showEditDialog, setShowEditDialog] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; kb: { id: string; name: string } | null }>({
     isOpen: false,
@@ -66,6 +71,40 @@ export default function CustomerKnowledgeBasesPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleEditClick = (kb: KnowledgeBase) => {
+    setEditingKB(kb)
+
+    // Tipi belirle: önce customerType'dan, sonra texts'den parse et
+    const deriveType = (): "HOTEL" | "RESTAURANT" => {
+      // Önce customer'ın customerType'ına bak
+      if (kb.customer?.customerType) {
+        return kb.customer.customerType
+      }
+      
+      // Sonra session'daki customerType'a bak
+      if (session?.user.customerType) {
+        return session.user.customerType
+      }
+
+      // Son olarak texts'den parse et
+      try {
+        if (kb.texts && kb.texts.length > 0) {
+          const parsed = JSON.parse(kb.texts[0])
+          if (parsed.type === "RESTAURANT") {
+            return "RESTAURANT"
+          }
+        }
+      } catch {
+        // Parse edilemezse default HOTEL
+      }
+
+      return "HOTEL"
+    }
+
+    setSelectedType(deriveType())
+    setShowEditDialog(true)
   }
 
   const handleDeleteClick = (id: string, name: string) => {
@@ -132,8 +171,47 @@ export default function CustomerKnowledgeBasesPage() {
 
       <KnowledgeBasesTable
         knowledgeBases={knowledgeBases}
+        onEdit={handleEditClick}
         onDelete={handleDeleteClick}
       />
+
+      {showEditDialog && selectedType === "HOTEL" && editingKB && (
+        <HotelKnowledgeForm
+          knowledgeBase={editingKB}
+          customerId={session.user.id}
+          customerName={session.user.name || session.user.email || ""}
+          onClose={() => {
+            setShowEditDialog(false)
+            setEditingKB(null)
+            setSelectedType(null)
+          }}
+          onSuccess={() => {
+            setShowEditDialog(false)
+            setEditingKB(null)
+            setSelectedType(null)
+            loadKnowledgeBases()
+          }}
+        />
+      )}
+
+      {showEditDialog && selectedType === "RESTAURANT" && editingKB && (
+        <RestaurantKnowledgeForm
+          knowledgeBase={editingKB}
+          customerId={session.user.id}
+          customerName={session.user.name || session.user.email || ""}
+          onClose={() => {
+            setShowEditDialog(false)
+            setEditingKB(null)
+            setSelectedType(null)
+          }}
+          onSuccess={() => {
+            setShowEditDialog(false)
+            setEditingKB(null)
+            setSelectedType(null)
+            loadKnowledgeBases()
+          }}
+        />
+      )}
 
       <DeleteKBDialog
         isOpen={deleteDialog.isOpen}
