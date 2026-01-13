@@ -32,7 +32,7 @@ export const CREATE_RESERVATION_TOOL = {
     type: "function",
     function: {
         name: "create_reservation",
-        description: "Create a new hotel reservation. CRITICAL: You MUST have checked availability first. You MUST have verbally confirmed all details (dates, room, name) with the user and received a clear 'YES' before using this tool.",
+        description: "Create a new hotel reservation. CRITICAL: You MUST have checked availability first. You MUST have verbally confirmed all details (dates, room, name) with the user and received a clear 'YES' before using this tool. IMPORTANT: If you mentioned price information to the guest (e.g., 'gecelik 1000 TL, toplam 3000 TL'), you MUST include totalPrice parameter with the total amount.",
         parameters: {
             type: "object",
             properties: {
@@ -66,7 +66,7 @@ export const CREATE_RESERVATION_TOOL = {
                 },
                 totalPrice: {
                     type: "number",
-                    description: "Total price for the reservation in local currency. If discussed with the guest, include this."
+                    description: "Total price for the reservation in local currency (e.g., 3000 for 3000 TL). CRITICAL: If you mentioned any price to the guest (e.g., 'toplam 3000 TL', 'gecelik 1000 TL toplam 3000 TL'), you MUST include this parameter with the total amount. Extract the number from your conversation."
                 },
                 adultPrice: {
                     type: "number",

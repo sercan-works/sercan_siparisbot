@@ -470,7 +470,8 @@ export async function POST(req: NextRequest) {
       } else {
         // Built-in tool execution logic
         console.log(`[tool-call] Executing built-in tool: ${finalToolNameToUse}`)
-        result = await executeBuiltInTool(finalToolNameToUse, toolArgs, call)
+        // Pass body to access transcript if call object doesn't have it
+        result = await executeBuiltInTool(finalToolNameToUse, toolArgs, call, body)
         console.log(`[tool-call] Built-in tool result:`, result)
       }
 
@@ -529,7 +530,8 @@ export async function POST(req: NextRequest) {
 async function executeBuiltInTool(
   toolName: string,
   args: any,
-  call: any
+  call: any,
+  body?: any
 ): Promise<any> {
   switch (toolName) {
     case "create_order":
@@ -947,7 +949,7 @@ async function executeBuiltInTool(
         }
 
         // Calculate total price
-        // Priority: 1. totalPrice (if provided), 2. Calculate from adultPrice/childPrice, 3. null
+        // Priority: 1. totalPrice (if provided), 2. Calculate from adultPrice/childPrice, 3. Parse from transcript, 4. null
         let totalPrice: number | null = null
         
         if (args.totalPrice !== undefined && args.totalPrice !== null) {
@@ -971,14 +973,47 @@ async function executeBuiltInTool(
           totalPrice = (adultPrice * numberOfAdults) + (childPrice * numberOfChildren)
           if (totalPrice === 0) totalPrice = null
         }
+        
+        // Fallback: Try to parse price from transcript if available
+        // Get transcript from call object or body
+        const transcript = call?.transcript || body?.call?.transcript || body?.transcript
+        if (!totalPrice && transcript) {
+          console.log("[create_reservation] Attempting to parse price from transcript...")
+          // Look for patterns like "toplam 3000 TL", "toplam 3000", "3000 TL", etc.
+          const pricePatterns = [
+            /toplam\s+(\d+(?:[.,]\d+)?)\s*(?:TL|₺|türk\s*lirası)?/i,
+            /(\d+(?:[.,]\d+)?)\s*TL['\s]*dir/i,
+            /(\d+(?:[.,]\d+)?)\s*TL['\s]*toplam/i,
+            /toplam[^\d]*(\d+(?:[.,]\d+)?)/i,
+            /gecelik\s+(\d+(?:[.,]\d+)?)\s*TL[^,]*toplam\s+(\d+(?:[.,]\d+)?)\s*TL/i  // "gecelik 1000 TL, toplam 3000 TL"
+          ]
+          
+          for (const pattern of pricePatterns) {
+            const match = transcript.match(pattern)
+            if (match) {
+              // If pattern has 2 groups (gecelik + toplam), use the total (second group)
+              const priceMatch = match[2] || match[1]
+              if (priceMatch) {
+                const priceStr = priceMatch.replace(',', '.')
+                const parsedPrice = parseFloat(priceStr)
+                if (!isNaN(parsedPrice) && parsedPrice > 0) {
+                  totalPrice = parsedPrice
+                  console.log("[create_reservation] ✓ Parsed price from transcript:", totalPrice, "using pattern:", pattern)
+                  break
+                }
+              }
+            }
+          }
+        }
 
         console.log("[create_reservation] Price calculation:", {
-          totalPrice: args.totalPrice,
+          totalPriceFromArgs: args.totalPrice,
           adultPrice: args.adultPrice,
           childPrice: args.childPrice,
           numberOfAdults: args.numberOfAdults,
           numberOfChildren: args.numberOfChildren,
-          calculatedTotalPrice: totalPrice
+          finalTotalPrice: totalPrice,
+          transcriptAvailable: !!(call?.transcript || body?.call?.transcript || body?.transcript)
         })
 
         // Create reservation

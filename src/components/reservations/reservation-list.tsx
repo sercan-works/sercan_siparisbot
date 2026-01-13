@@ -201,8 +201,8 @@ export default function ReservationList({ initialReservations }: ReservationList
                                 </div>
 
                                 {/* Price Info */}
-                                {res.totalPrice && res.totalPrice > 0 && (
-                                    <div className="pt-2 border-t border-gray-100">
+                                <div className="pt-2 border-t border-gray-100">
+                                    {res.totalPrice && res.totalPrice > 0 ? (
                                         <div className="flex items-center justify-between bg-green-50 px-4 py-3 rounded-lg border border-green-100">
                                             <div className="flex items-center gap-2 text-sm text-gray-700">
                                                 <DollarSign className="w-4 h-4 text-green-600" />
@@ -222,8 +222,13 @@ export default function ReservationList({ initialReservations }: ReservationList
                                                 )}
                                             </div>
                                         </div>
-                                    </div>
-                                )}
+                                    ) : (
+                                        <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 px-4 py-2 rounded-lg border border-gray-100">
+                                            <DollarSign className="w-4 h-4 text-gray-400" />
+                                            <span>Fiyat bilgisi belirtilmemiş</span>
+                                        </div>
+                                    )}
+                                </div>
 
                                 {/* Special Requests */}
                                 {res.specialRequests && (
