@@ -256,6 +256,15 @@ export async function POST(req: NextRequest) {
       }
     })
 
+    if (call) {
+      console.log("[tool-call] Call found in DB:", {
+        callId: call.id,
+        retellCallId: call.retellCallId,
+        hasBot: !!call.bot,
+        organizationId: call.bot?.organizationId
+      })
+    }
+
     if (!call) {
       console.log("Call not found in DB, attempting to create or fetch:", finalRetellCallId)
 
@@ -346,7 +355,17 @@ export async function POST(req: NextRequest) {
             }
           }
         })
-        console.log(`✓ ${isTestCall ? 'Created test' : 'Recovered/Created'} call record:`, call.id, `(retellCallId: ${finalRetellCallId})`)
+        console.log(`✓ ${isTestCall ? 'Created test' : 'Recovered/Created'} call record:`, {
+          callId: call.id,
+          retellCallId: call.retellCallId,
+          hasBot: !!call.bot,
+          organizationId: call.bot?.organizationId
+        })
+        
+        // Validate call.id was created
+        if (!call.id || typeof call.id !== 'string' || call.id.trim() === '') {
+          throw new Error(`Failed to create call record - call.id is invalid: ${call.id}`)
+        }
 
       } catch (recoveryError: any) {
         console.error("Failed to recover call context:", recoveryError)
@@ -573,36 +592,85 @@ async function executeBuiltInTool(
         console.log("[create_order] Prepared order data:", {
           customerId: defaultUser.id,
           callId: call.id,
+          retellCallId: call.retellCallId,
           customerName: args.customer_name || args.name || "Misafir Müşteri",
           items: args.items || "Belirtilmedi",
-          totalAmount
+          totalAmount,
+          deliveryAddress: args.delivery_address || args.address || null
         })
+
+        // Validate call.id is not null/undefined
+        if (!call.id || typeof call.id !== 'string' || call.id.trim() === '') {
+          throw new Error(`Invalid call.id: ${call.id}. Call may not be properly saved.`)
+        }
+
+        // Check if order already exists for this call
+        const existingOrder = await prisma.order.findUnique({
+          where: { callId: call.id }
+        })
+
+        if (existingOrder) {
+          console.log("[create_order] Order already exists, updating:", existingOrder.id)
+        } else {
+          console.log("[create_order] Creating new order for call:", call.id)
+        }
 
         // Upsert order: Create if new, Update if exists (for changes during call)
-        const newOrder = await prisma.order.upsert({
-          where: { callId: call.id },
-          update: {
-            customerName: args.customer_name || args.name || "Misafir Müşteri",
-            customerPhone: args.customer_phone || args.phone || call.fromNumber || null,
-            items: args.items || args.order_details || "Belirtilmedi",
-            deliveryAddress: args.delivery_address || args.address || null,
-            totalAmount: totalAmount,
-            notes: args.notes || null,
-          },
-          create: {
-            customerId: defaultUser.id,
-            callId: call.id,
-            customerName: args.customer_name || args.name || "Misafir Müşteri",
-            customerPhone: args.customer_phone || args.phone || call.fromNumber || null,
-            items: args.items || args.order_details || "Belirtilmedi",
-            deliveryAddress: args.delivery_address || args.address || null,
-            totalAmount: totalAmount,
-            notes: args.notes || null,
-            status: "PENDING"
-          }
+        let newOrder
+        try {
+          newOrder = await prisma.order.upsert({
+            where: { callId: call.id },
+            update: {
+              customerName: args.customer_name || args.name || "Misafir Müşteri",
+              customerPhone: args.customer_phone || args.phone || call.fromNumber || null,
+              items: args.items || args.order_details || "Belirtilmedi",
+              deliveryAddress: args.delivery_address || args.address || null,
+              totalAmount: totalAmount,
+              notes: args.notes || null,
+            },
+            create: {
+              customerId: defaultUser.id,
+              callId: call.id,
+              customerName: args.customer_name || args.name || "Misafir Müşteri",
+              customerPhone: args.customer_phone || args.phone || call.fromNumber || null,
+              items: args.items || args.order_details || "Belirtilmedi",
+              deliveryAddress: args.delivery_address || args.address || null,
+              totalAmount: totalAmount,
+              notes: args.notes || null,
+              status: "PENDING"
+            }
+          })
+        } catch (upsertError: any) {
+          console.error("[create_order] Upsert error details:", {
+            error: upsertError.message,
+            code: upsertError.code,
+            meta: upsertError.meta,
+            stack: upsertError.stack
+          })
+          throw new Error(`Failed to upsert order: ${upsertError.message || upsertError}. Code: ${upsertError.code || 'unknown'}`)
+        }
+
+        // Verify order was actually created/updated
+        if (!newOrder || !newOrder.id) {
+          throw new Error("Order upsert returned null or missing id")
+        }
+
+        // Double-check order exists in database
+        const verifyOrder = await prisma.order.findUnique({
+          where: { id: newOrder.id }
         })
 
-        console.log("[create_order] Order created/updated successfully:", newOrder.id)
+        if (!verifyOrder) {
+          throw new Error(`Order was created but not found in database. Order ID: ${newOrder.id}`)
+        }
+
+        console.log("[create_order] Order created/updated successfully:", {
+          orderId: newOrder.id,
+          callId: newOrder.callId,
+          status: newOrder.status,
+          items: newOrder.items,
+          verified: !!verifyOrder
+        })
 
         return {
           success: true,
