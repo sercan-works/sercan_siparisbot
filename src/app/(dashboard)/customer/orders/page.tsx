@@ -64,6 +64,7 @@ export default function LiveOrdersPage() {
   const [previousOrderIds, setPreviousOrderIds] = useState<Set<string>>(new Set())
   const [newOrderIds, setNewOrderIds] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<"pending" | "preparing" | "completed">("pending")
+  const [hasPlayedInitialSound, setHasPlayedInitialSound] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [refreshInterval, setRefreshInterval] = useState(10000)
   const [autoRefresh, setAutoRefresh] = useState(true)
@@ -112,6 +113,23 @@ export default function LiveOrdersPage() {
         // Detect new orders - only show notification if we're on pending tab and there are actually new pending orders
         const currentOrderIds = new Set<string>(newOrders.map((o: Order) => o.id))
         const newlyAdded = newOrders.filter((o: Order) => !previousOrderIds.has(o.id))
+        
+        // Check if there are pending orders (for initial page load)
+        const pendingOrders = newOrders.filter((o: Order) => o.status === "PENDING")
+        
+        // Play sound on initial page load if there are pending orders
+        if (
+          !hasPlayedInitialSound &&
+          activeTab === "pending" &&
+          pendingOrders.length > 0 &&
+          previousOrderIds.size === 0
+        ) {
+          if (settings.soundEnabled && audioRef.current) {
+            audioRef.current.volume = settings.soundVolume / 100
+            audioRef.current.play().catch(() => {})
+          }
+          setHasPlayedInitialSound(true)
+        }
         
         // Only show notification if:
         // 1. We're on the pending tab
@@ -162,6 +180,15 @@ export default function LiveOrdersPage() {
     setPreviousOrderIds(new Set())
     setNewOrderIds(new Set())
   }, [activeTab])
+
+  // Reset initial sound flag when page is refreshed/reloaded
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      setHasPlayedInitialSound(false)
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload)
+  }, [])
 
   // Auto-refresh with configurable interval
   useEffect(() => {
