@@ -15,19 +15,23 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
 
     // Extract tool call information - support both snake_case and camelCase
+    // Retell Custom Functions use "function_name", while LLM tools use "tool_name"
     const {
       call_id,
       callId, // Alternative camelCase format
       tool_call_id: extractedToolCallId,
       tool_name,
       toolName, // Alternative camelCase format
+      function_name, // Retell Custom Function format
+      functionName, // Alternative camelCase format
       arguments: toolArgs,
     } = body
 
     // Use call_id or callId (camelCase alternative)
     const retellCallId = call_id || callId
     tool_call_id = extractedToolCallId || body.tool_call_id || body.toolCallId
-    const toolNameToUse = tool_name || toolName
+    // Support both Retell Custom Function format (function_name) and LLM tool format (tool_name)
+    const toolNameToUse = function_name || functionName || tool_name || toolName
 
     console.log("Tool call received - full body:", JSON.stringify(body, null, 2))
     console.log("Tool call received - extracted:", {
@@ -293,12 +297,14 @@ export async function POST(req: NextRequest) {
     let tools = (call.bot.customTools as any[]) || []
     console.log(`[tool-call] Bot found - ID: ${call.bot.organizationId}, Tools count: ${tools.length}`)
     console.log(`[tool-call] Bot tools:`, JSON.stringify(tools.map((t: any) => t.function?.name), null, 2))
+    console.log(`[tool-call] Looking for tool: ${toolNameToUse}`)
     
     let toolDef = tools.find(t => t.function?.name === toolNameToUse)
 
     // If tool not found and it's a built-in tool (create_order, create_reservation), try to inject it
-    if (!toolDef && (toolNameToUse === "create_order" || toolNameToUse === "create_reservation" || toolNameToUse === "check_availability")) {
-      console.log(`[tool-call] Tool '${toolNameToUse}' not found in bot's customTools, attempting to inject built-in tool...`)
+    // This handles cases where bot's customTools is null or empty
+    if (!toolDef && toolNameToUse && (toolNameToUse === "create_order" || toolNameToUse === "create_reservation" || toolNameToUse === "check_availability")) {
+      console.log(`[tool-call] Tool '${toolNameToUse}' not found in bot's customTools (count: ${tools.length}), attempting to inject built-in tool...`)
       
       try {
         // Import built-in tools
@@ -318,6 +324,8 @@ export async function POST(req: NextRequest) {
           toolDef = builtInTool
           tools = [...tools, builtInTool]
           console.log(`[tool-call] ✓ Injected built-in tool '${toolNameToUse}' for this request`)
+        } else {
+          console.error(`[tool-call] Built-in tool '${toolNameToUse}' not found in tools library`)
         }
       } catch (importError) {
         console.error("[tool-call] Failed to import built-in tools:", importError)
@@ -648,16 +656,34 @@ async function executeBuiltInTool(
         }
 
         // Get guest phone from args or call
+        // Priority: 1. args.guestPhone (from Retell function call), 2. call.fromNumber (from DB), 3. Retell API
         let guestPhone = args.guestPhone || call.fromNumber || null
+        
+        console.log("[create_reservation] Phone number lookup:", {
+          fromArgs: args.guestPhone,
+          fromCall: call.fromNumber,
+          retellCallId: call.retellCallId,
+          currentValue: guestPhone
+        })
 
         // If still no phone and we have call_id, try to fetch from Retell
         if (!guestPhone && call.retellCallId) {
           try {
+            console.log("[create_reservation] Attempting to fetch phone from Retell API...")
             const retellCall = await callRetellApi("GET", `/get-call/${call.retellCallId}`, null, organizationId)
             guestPhone = retellCall?.from_number || null
+            console.log("[create_reservation] Retell API response:", {
+              hasFromNumber: !!retellCall?.from_number,
+              fromNumber: retellCall?.from_number
+            })
           } catch (err) {
             console.warn("[create_reservation] Could not retrieve phone from Retell:", err)
           }
+        }
+
+        // Final fallback: log if still no phone
+        if (!guestPhone) {
+          console.warn("[create_reservation] No phone number found from any source. Will use 'Unknown' as fallback.")
         }
 
         // Validate check-in/check-out dates

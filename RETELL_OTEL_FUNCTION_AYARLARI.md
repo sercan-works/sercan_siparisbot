@@ -54,7 +54,9 @@ Content-Type: application/json
 
 **Payload: args only:** ✅ **AÇIK** (checked)
 
-**JSON Schema:**
+**⚠️ ÖNEMLİ:** Retell dashboard'da Parameters kısmına aşağıdaki JSON Schema'yı **TAM OLARAK** kopyalayın. Format tam olarak şu şekilde olmalı:
+
+**JSON Schema (Retell Dashboard'a Kopyalayın):**
 ```json
 {
   "type": "object",
@@ -97,6 +99,13 @@ Content-Type: application/json
   ]
 }
 ```
+
+**📋 Adım Adım:**
+1. Retell Dashboard'da Custom Function oluştururken **Parameters** bölümüne gidin
+2. **Tab:** dropdown'dan **JSON** seçin
+3. **Payload: args only** checkbox'ını **AÇIK** yapın (checked)
+4. Yukarıdaki JSON Schema'yı **tam olarak** kopyalayıp yapıştırın
+5. **Save** butonuna tıklayın
 
 #### Example 1 (Minimal - Zorunlu Alanlar)
 ```json
@@ -220,6 +229,22 @@ Function'ı oluştururken şunları kontrol edin:
 **Sebep:** Bot'ta tool tanımlı değil
 **Çözüm:** Bot'u güncelleyin veya `PUT /api/bots/{botId}` endpoint'i ile tool'ları ekleyin. HOTEL tipindeki bot'lar için sistem otomatik olarak `create_reservation` tool'unu ekler.
 
+### Hata: Retell'de JSON Schema Format Hatası
+**Sebep:** Retell dashboard'da Parameters kısmına yanlış format girilmiş
+**Çözüm:** 
+1. Retell Dashboard'da Custom Function'ı açın
+2. **Parameters** bölümüne gidin
+3. **Tab:** dropdown'dan **JSON** seçili olduğundan emin olun
+4. **Payload: args only** checkbox'ının **AÇIK** olduğundan emin olun
+5. Yukarıdaki JSON Schema'yı **tam olarak** (tırnak işaretleri dahil) kopyalayıp yapıştırın
+6. JSON'un geçerli olduğundan emin olun (virgül hataları, eksik tırnak işaretleri olmamalı)
+7. **Save** butonuna tıklayın
+
+**⚠️ ÖNEMLİ:** JSON Schema'yı kopyalarken:
+- Tüm tırnak işaretlerinin doğru olduğundan emin olun (`"` karakteri)
+- Son satırdan sonra virgül olmamalı
+- `required` array'i doğru formatta olmalı
+
 ### Hata: "Room type not found"
 **Sebep:** Veritabanında oda tipi bulunamadı
 **Çözüm:** 
@@ -237,6 +262,38 @@ Function'ı oluştururken şunları kontrol edin:
 - Farklı tarih aralığı deneyin
 - Farklı oda tipi seçin
 - Sistem normal çalışıyor, sadece müsaitlik yok
+
+### Hata: Retell'de Function Çağrılmıyor veya Hata Dönüyor
+**Sebep:** API endpoint'i yanıt vermiyor veya hata dönüyor
+**Çözüm:**
+1. Retell Dashboard'da **Webhook Settings** bölümünü kontrol edin
+2. Webhook URL'in doğru olduğundan emin olun: `https://siparisbot.vercel.app/api/webhooks/tool-call`
+3. Server log'larını kontrol edin (Vercel Dashboard > Functions > Logs)
+4. Postman ile manuel test yapın (yukarıdaki Postman test rehberine bakın)
+5. Retell Dashboard'da **Test** butonunu kullanarak function'ı test edin
+
+### Sorun: guestPhone Null Oluyor
+**Sebep:** Telefon numarası birkaç sebepten null olabilir:
+1. **Retell'den `guestPhone` parametresi gönderilmemiş**: Müşteri telefon numarasını söylemediyse Retell bu parametreyi göndermeyebilir
+2. **Call kaydında `fromNumber` yok**: Retell webhook'unda `from_number` null olabilir (özellikle test call'larında)
+3. **Retell API'den telefon numarası çekilememiş**: Retell API çağrısı başarısız olabilir veya `from_number` field'ı response'da olmayabilir
+
+**Sistem Davranışı:**
+- Sistem önce `args.guestPhone` (Retell'den gelen parametre) kontrol eder
+- Sonra `call.fromNumber` (Call kaydındaki telefon) kontrol eder
+- Son olarak Retell API'den telefon numarası çekmeye çalışır
+- Eğer hiçbiri yoksa, `guestPhone` olarak `"Unknown"` kullanılır
+
+**Çözüm:**
+- Rezervasyon oluşturulurken telefon numarası `"Unknown"` olarak kaydedilir, bu normal bir durumdur
+- Eğer telefon numarası önemliyse, Retell bot'unun müşteriden telefon numarasını sormasını sağlayın
+- Veya `guestPhone` parametresini Retell Custom Function'da zorunlu hale getirebilirsiniz (ancak bu müşteri deneyimini olumsuz etkileyebilir)
+
+**Log Kontrolü:**
+Vercel log'larında şu mesajları arayın:
+- `[create_reservation] Phone number lookup:` - Telefon numarası arama sürecini gösterir
+- `[create_reservation] Attempting to fetch phone from Retell API...` - Retell API çağrısı yapılıyor
+- `[create_reservation] No phone number found from any source. Will use 'Unknown' as fallback.` - Telefon numarası bulunamadı
 
 ---
 
