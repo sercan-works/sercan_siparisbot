@@ -18,25 +18,42 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get("status")
 
   try {
-    // Build where clause based on role
-    // If CUSTOMER (Restaurant), show orders assigned to them OR orders from bots they're assigned to
-    // If ADMIN, show all orders in organization
-    const where: any = role === "CUSTOMER" && customerType === "RESTAURANT" ? {
-      OR: [
-        { customerId: userId },
-        {
-          call: {
-            bot: {
-              assignments: {
-                some: { userId }
-              }
-            }
-          }
-        }
-      ]
-    } : {
-      customer: {
+    // Build where clause - filter by organization through call
+    // This is simpler and more reliable than filtering through customer relation
+    let where: any = {
+      call: {
         organizationId: organizationId
+      }
+    }
+
+    // For CUSTOMER role, also filter by their assignments
+    if (role === "CUSTOMER" && customerType === "RESTAURANT") {
+      // Get bot IDs this user is assigned to
+      const botAssignments = await prisma.botAssignment.findMany({
+        where: { userId },
+        select: { botId: true }
+      })
+      const assignedBotIds = botAssignments.map(a => a.botId)
+
+      // Add filter: orders from assigned bots OR orders assigned to this user
+      where = {
+        AND: [
+          {
+            call: {
+              organizationId: organizationId
+            }
+          },
+          {
+            OR: [
+              { customerId: userId },
+              {
+                call: {
+                  botId: { in: assignedBotIds }
+                }
+              }
+            ]
+          }
+        ]
       }
     }
 
@@ -62,14 +79,16 @@ export async function GET(req: NextRequest) {
             retellCallId: true,
             transcript: true,
             recordingUrl: true,
-            createdAt: true
+            createdAt: true,
+            organizationId: true
           }
         },
         customer: {
           select: {
             id: true,
             email: true,
-            name: true
+            name: true,
+            organizationId: true
           }
         }
       },
@@ -78,7 +97,13 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    console.log("[orders] Found orders:", orders.length)
+    console.log("[orders] Found orders:", {
+      count: orders.length,
+      orderIds: orders.map(o => o.id),
+      customerIds: orders.map(o => o.customerId),
+      callOrgIds: orders.map(o => o.call?.organizationId),
+      customerOrgIds: orders.map(o => o.customer?.organizationId)
+    })
 
     return NextResponse.json({ orders })
   } catch (error) {
