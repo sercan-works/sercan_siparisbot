@@ -110,7 +110,7 @@ export default function LiveOrdersPage() {
         const newOrders = data.orders || []
 
         // Detect new orders
-        const currentOrderIds = new Set(newOrders.map((o: Order) => o.id))
+        const currentOrderIds = new Set<string>(newOrders.map((o: Order) => o.id))
         const newlyAdded = newOrders.filter((o: Order) => !previousOrderIds.has(o.id))
         
         if (newlyAdded.length > 0 && previousOrderIds.size > 0) {
