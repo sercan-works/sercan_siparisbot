@@ -539,6 +539,7 @@ async function executeBuiltInTool(
         console.log("[create_order] Call info:", { 
           callId: call?.id, 
           retellCallId: call?.retellCallId,
+          initiatedById: call?.initiatedById,
           hasBot: !!call?.bot,
           organizationId: call?.bot?.organizationId
         })
@@ -566,16 +567,52 @@ async function executeBuiltInTool(
 
         // customer_name is optional but preferred - use default if not provided
 
-        // Find a default user for this org to assign the order to (usually the admin/owner)
-        const defaultUser = await prisma.user.findFirst({
-          where: { organizationId: organizationId }
-        })
+        // Find the correct user to assign the order to
+        // Priority: 1. call.initiatedById (user who initiated the call), 2. Bot-assigned user, 3. First user in org
+        let assignedUser = null
+        
+        // Priority 1: Use the user who initiated the call
+        if (call.initiatedById) {
+          assignedUser = await prisma.user.findUnique({
+            where: { id: call.initiatedById }
+          })
+          if (assignedUser) {
+            console.log("[create_order] Using call initiator as assigned user:", assignedUser.id)
+          }
+        }
+        
+        // Priority 2: Try to find a user assigned to this bot
+        if (!assignedUser && call.bot?.id) {
+          const botAssignment = await prisma.botAssignment.findFirst({
+            where: { botId: call.bot.id },
+            include: { user: true }
+          })
+          
+          if (botAssignment?.user) {
+            assignedUser = botAssignment.user
+            console.log("[create_order] Using bot-assigned user:", assignedUser.id)
+          }
+        }
+        
+        // Priority 3: Fallback to first user in organization
+        if (!assignedUser) {
+          assignedUser = await prisma.user.findFirst({
+            where: { organizationId: organizationId }
+          })
+          if (assignedUser) {
+            console.log("[create_order] Using first user in organization as fallback:", assignedUser.id)
+          }
+        }
 
-        if (!defaultUser) {
+        if (!assignedUser) {
           throw new Error(`No user found for organization ${organizationId} to assign order`)
         }
 
-        console.log("[create_order] Found user:", defaultUser.id)
+        console.log("[create_order] Final assigned user:", {
+          userId: assignedUser.id,
+          email: assignedUser.email,
+          organizationId: assignedUser.organizationId
+        })
 
         // Clean up total amount - handle both number and string
         let totalAmount: number | null = null
@@ -590,7 +627,7 @@ async function executeBuiltInTool(
         }
 
         console.log("[create_order] Prepared order data:", {
-          customerId: defaultUser.id,
+          customerId: assignedUser.id,
           callId: call.id,
           retellCallId: call.retellCallId,
           customerName: args.customer_name || args.name || "Misafir Müşteri",
@@ -629,7 +666,7 @@ async function executeBuiltInTool(
               notes: args.notes || null,
             },
             create: {
-              customerId: defaultUser.id,
+              customerId: assignedUser.id,
               callId: call.id,
               customerName: args.customer_name || args.name || "Misafir Müşteri",
               customerPhone: args.customer_phone || args.phone || call.fromNumber || null,
