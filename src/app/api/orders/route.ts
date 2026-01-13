@@ -13,13 +13,36 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { id: userId, role } = session.user
+  const { organizationId, role, id: userId, customerType } = session.user
   const { searchParams } = new URL(req.url)
   const status = searchParams.get("status")
 
+  if (role === "CUSTOMER" && customerType !== "RESTAURANT") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
   try {
     const where: any = {
-      customerId: userId
+      // If CUSTOMER (Restaurant), show orders assigned to them OR orders from bots they're assigned to
+      // If ADMIN, show all in organization
+      ...(role === "CUSTOMER" ? {
+        OR: [
+          { customerId: userId },
+          { 
+            call: {
+              bot: {
+                assignments: {
+                  some: { userId }
+                }
+              }
+            }
+          }
+        ]
+      } : {
+        customer: {
+          organizationId: organizationId
+        }
+      })
     }
 
     if (status) {
@@ -35,7 +58,13 @@ export async function GET(req: NextRequest) {
             retellCallId: true,
             transcript: true,
             recordingUrl: true,
-            createdAt: true
+            createdAt: true,
+            bot: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
           }
         }
       },
