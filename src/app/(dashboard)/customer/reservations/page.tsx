@@ -71,15 +71,33 @@ export default async function ReservationsPage() {
 
     const reservations = await getReservations()
 
+    const upcomingCount = reservations.filter((r) => {
+        const checkIn = new Date(r.checkIn || "")
+        checkIn.setHours(0, 0, 0, 0)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        return checkIn >= today
+    }).length
+
+    const pastCount = reservations.length - upcomingCount
+
     return (
-        <div className="p-8 max-w-5xl mx-auto">
-            <div className="flex items-center justify-between mb-8">
+        <div className="p-6 sm:p-8 max-w-6xl mx-auto">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900">Rezervasyonlar</h1>
                     <p className="text-gray-500 mt-1">Botunuz üzerinden alınan rezervasyon talepleri.</p>
                 </div>
-                <div className="bg-blue-100 text-blue-800 px-4 py-2 rounded-full font-medium text-sm">
-                    Toplam: {reservations.length}
+                <div className="flex items-center gap-3">
+                    <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-lg font-medium text-sm border border-blue-200">
+                        Toplam: {reservations.length}
+                    </div>
+                    <div className="bg-green-50 text-green-700 px-4 py-2 rounded-lg font-medium text-sm border border-green-200">
+                        Gelecek: {upcomingCount}
+                    </div>
+                    <div className="bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium text-sm border border-gray-200">
+                        Geçmiş: {pastCount}
+                    </div>
                 </div>
             </div>
 
