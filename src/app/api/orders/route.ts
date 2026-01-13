@@ -13,18 +13,45 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { id: userId, role } = session.user
+  const { id: userId, role, organizationId, customerType } = session.user
   const { searchParams } = new URL(req.url)
   const status = searchParams.get("status")
 
   try {
-    const where: any = {
-      customerId: userId
+    // Build where clause based on role
+    // If CUSTOMER (Restaurant), show orders assigned to them OR orders from bots they're assigned to
+    // If ADMIN, show all orders in organization
+    const where: any = role === "CUSTOMER" && customerType === "RESTAURANT" ? {
+      OR: [
+        { customerId: userId },
+        {
+          call: {
+            bot: {
+              assignments: {
+                some: { userId }
+              }
+            }
+          }
+        }
+      ]
+    } : {
+      customer: {
+        organizationId: organizationId
+      }
     }
 
     if (status) {
       where.status = status
     }
+
+    console.log("[orders] Fetching orders with filter:", {
+      userId,
+      role,
+      organizationId,
+      customerType,
+      status,
+      whereClause: JSON.stringify(where, null, 2)
+    })
 
     const orders = await prisma.order.findMany({
       where,
@@ -37,12 +64,21 @@ export async function GET(req: NextRequest) {
             recordingUrl: true,
             createdAt: true
           }
+        },
+        customer: {
+          select: {
+            id: true,
+            email: true,
+            name: true
+          }
         }
       },
       orderBy: {
         createdAt: "desc"
       }
     })
+
+    console.log("[orders] Found orders:", orders.length)
 
     return NextResponse.json({ orders })
   } catch (error) {
