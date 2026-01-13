@@ -1,11 +1,14 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "../../../../components/ui/card"
 import { Button } from "../../../../components/ui/button"
 import { Badge } from "../../../../components/ui/badge"
-import { Bell, Check, X, Clock, ChefHat, Eye, Settings } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../../components/ui/tabs"
+import { Input } from "../../../../components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../../components/ui/select"
+import { Bell, Check, X, Clock, ChefHat, Eye, Settings, Search, RefreshCw, Package, PackageCheck } from "lucide-react"
 
 export const dynamic = "force-dynamic"
 
@@ -47,16 +50,26 @@ const statusIcons: Record<OrderStatus, any> = {
   CANCELLED: X
 }
 
+const REFRESH_INTERVALS = [
+  { value: 10000, label: "10 saniye" },
+  { value: 15000, label: "15 saniye" },
+  { value: 20000, label: "20 saniye" },
+  { value: 30000, label: "30 saniye" }
+]
+
 export default function LiveOrdersPage() {
   const router = useRouter()
-  const [orders, setOrders] = useState<Order[]>([])
+  const [allOrders, setAllOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
-  const [previousOrderCount, setPreviousOrderCount] = useState(0)
+  const [previousOrderIds, setPreviousOrderIds] = useState<Set<string>>(new Set())
+  const [newOrderIds, setNewOrderIds] = useState<Set<string>>(new Set())
+  const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [refreshInterval, setRefreshInterval] = useState(10000)
+  const [autoRefresh, setAutoRefresh] = useState(true)
   const [settings, setSettings] = useState({
     soundEnabled: true,
     soundVolume: 70,
-    autoRefresh: true,
-    refreshInterval: 5000,
     showDesktopNotifications: true
   })
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -65,38 +78,67 @@ export default function LiveOrdersPage() {
   useEffect(() => {
     const savedSettings = localStorage.getItem("orderNotificationSettings")
     if (savedSettings) {
-      setSettings(JSON.parse(savedSettings))
+      const parsed = JSON.parse(savedSettings)
+      setSettings(parsed)
+      if (parsed.refreshInterval) {
+        setRefreshInterval(parsed.refreshInterval)
+      }
+      if (parsed.autoRefresh !== undefined) {
+        setAutoRefresh(parsed.autoRefresh)
+      }
     }
   }, [])
 
+  // Save settings to localStorage
+  useEffect(() => {
+    localStorage.setItem("orderNotificationSettings", JSON.stringify({
+      ...settings,
+      refreshInterval,
+      autoRefresh
+    }))
+  }, [settings, refreshInterval, autoRefresh])
+
   // Fetch orders
-  const fetchOrders = async () => {
+  const fetchOrders = async (statusFilter?: OrderStatus) => {
     try {
-      const response = await fetch("/api/orders?status=PENDING")
+      const url = statusFilter 
+        ? `/api/orders?status=${statusFilter}`
+        : "/api/orders"
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
         const newOrders = data.orders || []
 
-        // Play sound and show notification if new orders arrived
-        if (newOrders.length > previousOrderCount && previousOrderCount > 0) {
+        // Detect new orders
+        const currentOrderIds = new Set(newOrders.map((o: Order) => o.id))
+        const newlyAdded = newOrders.filter((o: Order) => !previousOrderIds.has(o.id))
+        
+        if (newlyAdded.length > 0 && previousOrderIds.size > 0) {
           // Sound notification
           if (settings.soundEnabled && audioRef.current) {
             audioRef.current.volume = settings.soundVolume / 100
-            audioRef.current.play()
+            audioRef.current.play().catch(() => {})
           }
 
           // Desktop notification
           if (settings.showDesktopNotifications && "Notification" in window && Notification.permission === "granted") {
             new Notification("Yeni Sipariş!", {
-              body: `${newOrders.length - previousOrderCount} yeni sipariş geldi!`,
+              body: `${newlyAdded.length} yeni sipariş geldi!`,
               icon: "/favicon.ico",
               tag: "new-order"
             })
           }
+
+          // Mark new orders for animation
+          setNewOrderIds(new Set(newlyAdded.map((o: Order) => o.id)))
+          // Remove animation after 3 seconds
+          setTimeout(() => {
+            setNewOrderIds(new Set())
+          }, 3000)
         }
 
-        setOrders(newOrders)
-        setPreviousOrderCount(newOrders.length)
+        setAllOrders(newOrders)
+        setPreviousOrderIds(currentOrderIds)
       }
     } catch (error) {
       console.error("Error fetching orders:", error)
@@ -107,12 +149,47 @@ export default function LiveOrdersPage() {
 
   // Auto-refresh with configurable interval
   useEffect(() => {
-    fetchOrders()
-    if (settings.autoRefresh) {
-      const interval = setInterval(fetchOrders, settings.refreshInterval)
+    if (activeTab === "pending") {
+      fetchOrders("PENDING")
+    } else {
+      fetchOrders("COMPLETED")
+    }
+
+    if (autoRefresh) {
+      const interval = setInterval(() => {
+        if (activeTab === "pending") {
+          fetchOrders("PENDING")
+        } else {
+          fetchOrders("COMPLETED")
+        }
+      }, refreshInterval)
       return () => clearInterval(interval)
     }
-  }, [previousOrderCount, settings.autoRefresh, settings.refreshInterval])
+  }, [activeTab, autoRefresh, refreshInterval])
+
+  // Filter orders by search query
+  const filteredOrders = useMemo(() => {
+    const statusFiltered = allOrders.filter(order => {
+      if (activeTab === "pending") {
+        return order.status !== "COMPLETED" && order.status !== "CANCELLED"
+      } else {
+        return order.status === "COMPLETED"
+      }
+    })
+
+    if (!searchQuery.trim()) {
+      return statusFiltered
+    }
+
+    const query = searchQuery.toLowerCase()
+    return statusFiltered.filter(order =>
+      order.customerName?.toLowerCase().includes(query) ||
+      order.customerPhone?.toLowerCase().includes(query) ||
+      order.items?.toLowerCase().includes(query) ||
+      order.deliveryAddress?.toLowerCase().includes(query) ||
+      order.id.toLowerCase().includes(query)
+    )
+  }, [allOrders, activeTab, searchQuery])
 
   // Update order status
   const updateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
@@ -124,7 +201,12 @@ export default function LiveOrdersPage() {
       })
 
       if (response.ok) {
-        fetchOrders()
+        // Refresh orders
+        if (activeTab === "pending") {
+          fetchOrders("PENDING")
+        } else {
+          fetchOrders("COMPLETED")
+        }
       }
     } catch (error) {
       console.error("Error updating order:", error)
@@ -139,6 +221,15 @@ export default function LiveOrdersPage() {
     })
   }
 
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString("tr-TR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric"
+    })
+  }
+
   const getTimeSince = (dateString: string) => {
     const now = new Date().getTime()
     const created = new Date(dateString).getTime()
@@ -149,31 +240,70 @@ export default function LiveOrdersPage() {
     return `${diffMinutes} dakika önce`
   }
 
+  const pendingOrders = allOrders.filter(o => o.status !== "COMPLETED" && o.status !== "CANCELLED")
+  const completedOrders = allOrders.filter(o => o.status === "COMPLETED")
+
   if (loading) {
     return (
       <div className="container mx-auto py-8">
-        <p>Yükleniyor...</p>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <RefreshCw className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600">Yükleniyor...</p>
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="container mx-auto py-6 sm:py-8 px-4">
       {/* Hidden audio element for notification sound */}
       <audio ref={audioRef} src="/notification.mp3" preload="auto" />
 
-      <div className="flex items-center justify-between mb-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold">Canlı Siparişler</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Siparişler</h1>
           <p className="text-gray-600 mt-1">
-            Otomatik yenileme: {settings.autoRefresh ? `${settings.refreshInterval / 1000} saniye` : "Kapalı"}
+            {autoRefresh ? (
+              <span>Otomatik yenileme: {REFRESH_INTERVALS.find(i => i.value === refreshInterval)?.label || `${refreshInterval / 1000} saniye`}</span>
+            ) : (
+              <span>Otomatik yenileme kapalı</span>
+            )}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Badge variant="outline" className="text-lg px-4 py-2">
-            {orders.length} Bekleyen Sipariş
-          </Badge>
-          <Button onClick={fetchOrders} variant="outline">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Select value={refreshInterval.toString()} onValueChange={(v) => setRefreshInterval(Number(v))}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {REFRESH_INTERVALS.map(interval => (
+                  <SelectItem key={interval.value} value={interval.value.toString()}>
+                    {interval.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              variant={autoRefresh ? "default" : "outline"}
+              size="sm"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${autoRefresh ? "animate-spin" : ""}`} />
+              {autoRefresh ? "Aktif" : "Pasif"}
+            </Button>
+          </div>
+          <Button onClick={() => {
+            if (activeTab === "pending") {
+              fetchOrders("PENDING")
+            } else {
+              fetchOrders("COMPLETED")
+            }
+          }} variant="outline" size="sm">
+            <RefreshCw className="h-4 w-4 mr-2" />
             Yenile
           </Button>
           <Button
@@ -186,122 +316,300 @@ export default function LiveOrdersPage() {
         </div>
       </div>
 
-      {orders.length === 0 ? (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <ChefHat className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-xl text-gray-600">Bekleyen sipariş yok</p>
-            <p className="text-sm text-gray-500 mt-2">
-              Yeni siparişler geldiğinde burada görünecek
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {orders.map((order) => {
-            const StatusIcon = statusIcons[order.status]
-            return (
-              <Card
-                key={order.id}
-                className="relative border-2 border-red-500 shadow-lg animate-pulse"
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-lg">{order.customerName}</CardTitle>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {formatTime(order.createdAt)} - {getTimeSince(order.createdAt)}
-                      </p>
-                      {order.customerPhone && (
-                        <p className="text-sm text-gray-600 mt-1">
-                          📞 {order.customerPhone}
-                        </p>
-                      )}
-                    </div>
-                    <Badge className={statusColors[order.status]}>
-                      <StatusIcon className="h-4 w-4 mr-1" />
-                      {order.status}
-                    </Badge>
-                  </div>
-                </CardHeader>
+      {/* Search Bar */}
+      <div className="relative mb-6">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+        <Input
+          placeholder="Müşteri adı, telefon, sipariş içeriği veya adres ile ara..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10 h-11 text-base"
+        />
+      </div>
 
-                <CardContent className="space-y-4">
-                  {/* Sipariş Detayları */}
-                  <div>
-                    <h4 className="font-semibold text-sm mb-2">Sipariş:</h4>
-                    <p className="text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded">
-                      {order.items}
-                    </p>
-                  </div>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "pending" | "completed")} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md mb-6">
+          <TabsTrigger value="pending" className="flex items-center gap-2">
+            <Package className="w-4 h-4" />
+            Bekleyen Siparişler
+            {pendingOrders.length > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {pendingOrders.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="completed" className="flex items-center gap-2">
+            <PackageCheck className="w-4 h-4" />
+            Tamamlanan Siparişler
+            {completedOrders.length > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {completedOrders.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
 
-                  {/* Teslimat Adresi */}
-                  {order.deliveryAddress && (
-                    <div>
-                      <h4 className="font-semibold text-sm mb-2">Adres:</h4>
-                      <p className="text-sm text-gray-700">{order.deliveryAddress}</p>
-                    </div>
-                  )}
-
-                  {/* Notlar */}
-                  {order.notes && (
-                    <div>
-                      <h4 className="font-semibold text-sm mb-2">Notlar:</h4>
-                      <p className="text-sm text-gray-700">{order.notes}</p>
-                    </div>
-                  )}
-
-                  {/* Tutar */}
-                  {order.totalAmount && (
-                    <div className="pt-2 border-t">
-                      <p className="text-lg font-bold">
-                        Toplam: {order.totalAmount.toFixed(2)} TL
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Aksiyon Butonları */}
-                  <div className="grid grid-cols-2 gap-2 pt-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => router.push(`/customer/orders/${order.id}`)}
+        <TabsContent value="pending" className="mt-0">
+          {filteredOrders.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <Package className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-xl text-gray-600 font-semibold">
+                  {searchQuery ? "Arama sonucu bulunamadı" : "Bekleyen sipariş yok"}
+                </p>
+                <p className="text-sm text-gray-500 mt-2">
+                  {searchQuery 
+                    ? "Farklı bir arama terimi deneyin."
+                    : "Yeni siparişler geldiğinde burada görünecek"}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4 mb-4">
+              <div className="text-sm text-gray-600">
+                {filteredOrders.length} {filteredOrders.length === 1 ? "sipariş bulundu" : "sipariş bulundu"}
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {filteredOrders.map((order) => {
+                  const StatusIcon = statusIcons[order.status]
+                  const isNew = newOrderIds.has(order.id)
+                  return (
+                    <Card
+                      key={order.id}
+                      className={`relative border-2 transition-all duration-300 ${
+                        isNew 
+                          ? "border-green-500 shadow-lg animate-pulse" 
+                          : order.status === "PENDING" 
+                            ? "border-red-500 shadow-md hover:shadow-lg" 
+                            : "border-yellow-500 shadow-md hover:shadow-lg"
+                      }`}
                     >
-                      <Eye className="h-4 w-4 mr-2" />
-                      Detay
-                    </Button>
-                    <Button
-                      variant="default"
-                      onClick={() => updateOrderStatus(order.id, "PREPARING")}
-                    >
-                      <ChefHat className="h-4 w-4 mr-2" />
-                      Hazırla
-                    </Button>
-                    <Button
-                      className="col-span-2"
-                      variant="outline"
-                      onClick={() => updateOrderStatus(order.id, "COMPLETED")}
-                    >
-                      <Check className="h-4 w-4 mr-2" />
-                      Tamamlandı
-                    </Button>
-                  </div>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <CardTitle className="text-lg">{order.customerName}</CardTitle>
+                            <p className="text-sm text-gray-600 mt-1">
+                              {formatTime(order.createdAt)} - {getTimeSince(order.createdAt)}
+                            </p>
+                            {order.customerPhone && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                📞 {order.customerPhone}
+                              </p>
+                            )}
+                          </div>
+                          <Badge className={statusColors[order.status]}>
+                            <StatusIcon className="h-4 w-4 mr-1" />
+                            {order.status === "PENDING" ? "Beklemede" :
+                             order.status === "PREPARING" ? "Hazırlanıyor" :
+                             order.status === "READY" ? "Hazır" : order.status}
+                          </Badge>
+                        </div>
+                      </CardHeader>
 
-                  {/* Transcript Link */}
-                  {order.call.transcript && (
-                    <details className="text-xs">
-                      <summary className="cursor-pointer text-gray-600 hover:text-gray-900">
-                        Görüşme Kaydı
-                      </summary>
-                      <p className="mt-2 text-gray-700 whitespace-pre-wrap bg-gray-50 p-2 rounded max-h-32 overflow-y-auto">
-                        {order.call.transcript}
-                      </p>
-                    </details>
-                  )}
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-      )}
+                      <CardContent className="space-y-4">
+                        {/* Sipariş Detayları */}
+                        <div>
+                          <h4 className="font-semibold text-sm mb-2">Sipariş:</h4>
+                          <p className="text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded">
+                            {order.items}
+                          </p>
+                        </div>
+
+                        {/* Teslimat Adresi */}
+                        {order.deliveryAddress && (
+                          <div>
+                            <h4 className="font-semibold text-sm mb-2">Adres:</h4>
+                            <p className="text-sm text-gray-700">{order.deliveryAddress}</p>
+                          </div>
+                        )}
+
+                        {/* Notlar */}
+                        {order.notes && (
+                          <div>
+                            <h4 className="font-semibold text-sm mb-2">Notlar:</h4>
+                            <p className="text-sm text-gray-700">{order.notes}</p>
+                          </div>
+                        )}
+
+                        {/* Tutar */}
+                        {order.totalAmount && (
+                          <div className="pt-2 border-t">
+                            <p className="text-lg font-bold">
+                              Toplam: {order.totalAmount.toFixed(2)} TL
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Aksiyon Butonları */}
+                        <div className="grid grid-cols-2 gap-2 pt-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => router.push(`/customer/orders/${order.id}`)}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            Detay
+                          </Button>
+                          {order.status === "PENDING" && (
+                            <Button
+                              variant="default"
+                              onClick={() => updateOrderStatus(order.id, "PREPARING")}
+                            >
+                              <ChefHat className="h-4 w-4 mr-2" />
+                              Hazırla
+                            </Button>
+                          )}
+                          {order.status === "PREPARING" && (
+                            <Button
+                              className="col-span-2"
+                              variant="default"
+                              onClick={() => updateOrderStatus(order.id, "READY")}
+                            >
+                              <Clock className="h-4 w-4 mr-2" />
+                              Hazır İşaretle
+                            </Button>
+                          )}
+                          {order.status === "READY" && (
+                            <Button
+                              className="col-span-2"
+                              variant="default"
+                              onClick={() => updateOrderStatus(order.id, "COMPLETED")}
+                            >
+                              <Check className="h-4 w-4 mr-2" />
+                              Tamamlandı
+                            </Button>
+                          )}
+                        </div>
+
+                        {/* Transcript Link */}
+                        {order.call.transcript && (
+                          <details className="text-xs">
+                            <summary className="cursor-pointer text-gray-600 hover:text-gray-900">
+                              Görüşme Kaydı
+                            </summary>
+                            <p className="mt-2 text-gray-700 whitespace-pre-wrap bg-gray-50 p-2 rounded max-h-32 overflow-y-auto">
+                              {order.call.transcript}
+                            </p>
+                          </details>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="completed" className="mt-0">
+          {filteredOrders.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <PackageCheck className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-xl text-gray-600 font-semibold">
+                  {searchQuery ? "Arama sonucu bulunamadı" : "Tamamlanan sipariş yok"}
+                </p>
+                <p className="text-sm text-gray-500 mt-2">
+                  {searchQuery 
+                    ? "Farklı bir arama terimi deneyin."
+                    : "Tamamlanan siparişler burada görünecek"}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4 mb-4">
+              <div className="text-sm text-gray-600">
+                {filteredOrders.length} {filteredOrders.length === 1 ? "sipariş bulundu" : "sipariş bulundu"}
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {filteredOrders.map((order) => {
+                  const StatusIcon = statusIcons[order.status]
+                  return (
+                    <Card
+                      key={order.id}
+                      className="relative border-2 border-green-500 shadow-md hover:shadow-lg transition-all duration-300"
+                    >
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <CardTitle className="text-lg">{order.customerName}</CardTitle>
+                            <p className="text-sm text-gray-600 mt-1">
+                              {formatDate(order.createdAt)} {formatTime(order.createdAt)}
+                            </p>
+                            {order.completedAt && (
+                              <p className="text-xs text-green-600 mt-1">
+                                ✓ Tamamlandı: {formatDate(order.completedAt)} {formatTime(order.completedAt)}
+                              </p>
+                            )}
+                            {order.customerPhone && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                📞 {order.customerPhone}
+                              </p>
+                            )}
+                          </div>
+                          <Badge className={statusColors[order.status]}>
+                            <StatusIcon className="h-4 w-4 mr-1" />
+                            Tamamlandı
+                          </Badge>
+                        </div>
+                      </CardHeader>
+
+                      <CardContent className="space-y-4">
+                        {/* Sipariş Detayları */}
+                        <div>
+                          <h4 className="font-semibold text-sm mb-2">Sipariş:</h4>
+                          <p className="text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded">
+                            {order.items}
+                          </p>
+                        </div>
+
+                        {/* Teslimat Adresi */}
+                        {order.deliveryAddress && (
+                          <div>
+                            <h4 className="font-semibold text-sm mb-2">Adres:</h4>
+                            <p className="text-sm text-gray-700">{order.deliveryAddress}</p>
+                          </div>
+                        )}
+
+                        {/* Tutar */}
+                        {order.totalAmount && (
+                          <div className="pt-2 border-t">
+                            <p className="text-lg font-bold text-green-600">
+                              Toplam: {order.totalAmount.toFixed(2)} TL
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Detay Butonu */}
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => router.push(`/customer/orders/${order.id}`)}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Detayları Görüntüle
+                        </Button>
+
+                        {/* Transcript Link */}
+                        {order.call.transcript && (
+                          <details className="text-xs">
+                            <summary className="cursor-pointer text-gray-600 hover:text-gray-900">
+                              Görüşme Kaydı
+                            </summary>
+                            <p className="mt-2 text-gray-700 whitespace-pre-wrap bg-gray-50 p-2 rounded max-h-32 overflow-y-auto">
+                              {order.call.transcript}
+                            </p>
+                          </details>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
