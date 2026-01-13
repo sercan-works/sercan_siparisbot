@@ -5,9 +5,10 @@ import { format } from "date-fns"
 import { tr } from "date-fns/locale"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
-import { Calendar, Phone, User, Home, Clock, Search, CalendarCheck, CalendarX } from "lucide-react"
+import { Calendar, Phone, User, Home, Clock, Search, CalendarCheck, CalendarX, X, RotateCcw } from "lucide-react"
 
 interface Reservation {
     id: string
@@ -35,23 +36,52 @@ interface ReservationListProps {
 }
 
 export default function ReservationList({ initialReservations }: ReservationListProps) {
-    const [reservations] = useState<Reservation[]>(initialReservations)
+    const [reservations, setReservations] = useState<Reservation[]>(initialReservations)
     const [searchQuery, setSearchQuery] = useState("")
-    const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming")
+    const [activeTab, setActiveTab] = useState<"upcoming" | "past" | "cancelled">("upcoming")
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
+    // Update reservation status
+    const updateReservationStatus = async (reservationId: string, newStatus: string) => {
+        try {
+            const response = await fetch(`/api/reservations/${reservationId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: newStatus })
+            })
+
+            if (response.ok) {
+                const data = await response.json()
+                // Update local state
+                setReservations(prev => 
+                    prev.map(res => res.id === reservationId ? { ...res, status: newStatus } : res)
+                )
+            }
+        } catch (error) {
+            console.error("Error updating reservation:", error)
+        }
+    }
+
     // Filter reservations by date and search query
     const filteredReservations = useMemo(() => {
         let filtered = reservations.filter((res) => {
+            // Filter by status (cancelled tab)
+            if (activeTab === "cancelled") {
+                return res.status === "CANCELLED"
+            }
+
+            // Skip cancelled reservations in other tabs
+            if (res.status === "CANCELLED") return false
+
             const checkInDate = new Date(res.checkIn)
             checkInDate.setHours(0, 0, 0, 0)
 
             // Filter by date (upcoming vs past)
             if (activeTab === "upcoming") {
                 if (checkInDate < today) return false
-            } else {
+            } else if (activeTab === "past") {
                 if (checkInDate >= today) return false
             }
 
@@ -79,16 +109,20 @@ export default function ReservationList({ initialReservations }: ReservationList
     }, [reservations, searchQuery, activeTab, today])
 
     const upcomingCount = reservations.filter((res) => {
+        if (res.status === "CANCELLED") return false
         const checkInDate = new Date(res.checkIn)
         checkInDate.setHours(0, 0, 0, 0)
         return checkInDate >= today
     }).length
 
     const pastCount = reservations.filter((res) => {
+        if (res.status === "CANCELLED") return false
         const checkInDate = new Date(res.checkIn)
         checkInDate.setHours(0, 0, 0, 0)
         return checkInDate < today
     }).length
+
+    const cancelledCount = reservations.filter((res) => res.status === "CANCELLED").length
 
     const renderReservationCard = (res: Reservation) => {
         const checkInDate = new Date(res.checkIn)
@@ -96,7 +130,9 @@ export default function ReservationList({ initialReservations }: ReservationList
         const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24))
 
         return (
-            <Card key={res.id} className="overflow-hidden hover:shadow-lg transition-all duration-200 border-l-4 border-l-blue-500">
+            <Card key={res.id} className={`overflow-hidden hover:shadow-lg transition-all duration-200 border-l-4 ${
+                res.status === "CANCELLED" ? "border-l-red-500 opacity-75" : "border-l-blue-500"
+            }`}>
                 <CardContent className="p-0">
                     <div className="p-5 sm:p-6">
                         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
@@ -179,6 +215,34 @@ export default function ReservationList({ initialReservations }: ReservationList
                                         </p>
                                     </div>
                                 )}
+
+                                {/* Action Buttons */}
+                                <div className="pt-2 border-t border-gray-100">
+                                    <div className="flex gap-2">
+                                        {res.status !== "CANCELLED" && (
+                                            <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                onClick={() => updateReservationStatus(res.id, "CANCELLED")}
+                                                className="flex-1"
+                                            >
+                                                <X className="w-4 h-4 mr-2" />
+                                                İptal Et
+                                            </Button>
+                                        )}
+                                        {res.status === "CANCELLED" && (
+                                            <Button
+                                                variant="default"
+                                                size="sm"
+                                                onClick={() => updateReservationStatus(res.id, "PENDING")}
+                                                className="flex-1"
+                                            >
+                                                <RotateCcw className="w-4 h-4 mr-2" />
+                                                Tekrar Aktif Et
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -201,8 +265,8 @@ export default function ReservationList({ initialReservations }: ReservationList
             </div>
 
             {/* Tabs */}
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "upcoming" | "past")} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 max-w-md">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "upcoming" | "past" | "cancelled")} className="w-full">
+                <TabsList className="grid w-full grid-cols-3 max-w-2xl">
                     <TabsTrigger value="upcoming" className="flex items-center gap-2">
                         <CalendarCheck className="w-4 h-4" />
                         Gelecek Rezervasyonlar
@@ -218,6 +282,15 @@ export default function ReservationList({ initialReservations }: ReservationList
                         {pastCount > 0 && (
                             <Badge variant="secondary" className="ml-1">
                                 {pastCount}
+                            </Badge>
+                        )}
+                    </TabsTrigger>
+                    <TabsTrigger value="cancelled" className="flex items-center gap-2">
+                        <X className="w-4 h-4" />
+                        İptal Edilenler
+                        {cancelledCount > 0 && (
+                            <Badge variant="secondary" className="ml-1">
+                                {cancelledCount}
                             </Badge>
                         )}
                     </TabsTrigger>
@@ -257,6 +330,29 @@ export default function ReservationList({ initialReservations }: ReservationList
                                 {searchQuery 
                                     ? "Farklı bir arama terimi deneyin."
                                     : "Geçmiş rezervasyonlar burada listelenecektir."}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="text-sm text-gray-600 mb-4">
+                                {filteredReservations.length} {filteredReservations.length === 1 ? "rezervasyon bulundu" : "rezervasyon bulundu"}
+                            </div>
+                            {filteredReservations.map(renderReservationCard)}
+                        </div>
+                    )}
+                </TabsContent>
+
+                <TabsContent value="cancelled" className="mt-6">
+                    {filteredReservations.length === 0 ? (
+                        <div className="text-center py-16 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                            <X className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                                {searchQuery ? "Arama sonucu bulunamadı" : "İptal Edilen Rezervasyon Yok"}
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                                {searchQuery 
+                                    ? "Farklı bir arama terimi deneyin."
+                                    : "İptal edilen rezervasyonlar burada listelenecektir."}
                             </p>
                         </div>
                     ) : (

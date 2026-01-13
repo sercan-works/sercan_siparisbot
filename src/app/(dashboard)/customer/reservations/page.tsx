@@ -72,6 +72,7 @@ export default async function ReservationsPage() {
     const reservations = await getReservations()
 
     const upcomingCount = reservations.filter((r: any) => {
+        if (r.status === "CANCELLED") return false
         const checkIn = new Date(r.checkIn || "")
         checkIn.setHours(0, 0, 0, 0)
         const today = new Date()
@@ -79,7 +80,16 @@ export default async function ReservationsPage() {
         return checkIn >= today
     }).length
 
-    const pastCount = reservations.length - upcomingCount
+    const pastCount = reservations.filter((r: any) => {
+        if (r.status === "CANCELLED") return false
+        const checkIn = new Date(r.checkIn || "")
+        checkIn.setHours(0, 0, 0, 0)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        return checkIn < today
+    }).length
+
+    const cancelledCount = reservations.filter((r: any) => r.status === "CANCELLED").length
 
     return (
         <div className="p-6 sm:p-8 max-w-6xl mx-auto">
