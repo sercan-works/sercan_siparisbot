@@ -21,7 +21,31 @@ async function getReservations() {
 
     const reservations = await prisma.reservation.findMany({
         where: {
-            customerId: session.user.id
+            OR: [
+                { customerId: session.user.id },
+                { 
+                    call: {
+                        bot: {
+                            assignments: {
+                                some: { userId: session.user.id }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        include: {
+            call: {
+                select: {
+                    id: true,
+                    bot: {
+                        select: {
+                            id: true,
+                            name: true
+                        }
+                    }
+                }
+            }
         },
         orderBy: {
             createdAt: "desc"

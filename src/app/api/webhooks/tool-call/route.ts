@@ -712,17 +712,53 @@ async function executeBuiltInTool(
           throw new Error("Invalid date format. Dates must be in YYYY-MM-DD format")
         }
 
-        // Find a default user for this org to assign the reservation to (usually the admin/owner)
-        // Similar to create_order - no database lookup for room types, all info comes from prompt
-        const defaultUser = await prisma.user.findFirst({
-          where: { organizationId: organizationId }
-        })
+        // Find user to assign reservation to
+        // Priority: 1. Bot assignments (users assigned to this bot), 2. First HOTEL customer in org
+        let assignedUser = null
+        
+        // Try to find a user assigned to this bot
+        if (call.bot?.id) {
+          const botAssignment = await prisma.botAssignment.findFirst({
+            where: { botId: call.bot.id },
+            include: { user: true }
+          })
+          
+          if (botAssignment) {
+            assignedUser = botAssignment.user
+            console.log("[create_reservation] Found user from bot assignment:", assignedUser.id)
+          }
+        }
+        
+        // Fallback: Find first HOTEL customer in organization
+        if (!assignedUser) {
+          assignedUser = await prisma.user.findFirst({
+            where: { 
+              organizationId: organizationId,
+              customerType: "HOTEL",
+              role: "CUSTOMER"
+            }
+          })
+          
+          if (assignedUser) {
+            console.log("[create_reservation] Found HOTEL customer in organization:", assignedUser.id)
+          }
+        }
+        
+        // Final fallback: Any user in organization
+        if (!assignedUser) {
+          assignedUser = await prisma.user.findFirst({
+            where: { organizationId: organizationId }
+          })
+          
+          if (assignedUser) {
+            console.log("[create_reservation] Found any user in organization:", assignedUser.id)
+          }
+        }
 
-        if (!defaultUser) {
+        if (!assignedUser) {
           throw new Error(`No user found for organization ${organizationId} to assign reservation`)
         }
 
-        console.log("[create_reservation] Found user:", defaultUser.id)
         console.log("[create_reservation] Room type from prompt:", args.roomType)
 
         // Get guest phone from args or call
@@ -775,7 +811,7 @@ async function executeBuiltInTool(
         // All room type info comes from prompt, we just store the name
         const reservation = await prisma.reservation.create({
           data: {
-            customerId: defaultUser.id, // Assign to organization owner (like create_order)
+            customerId: assignedUser.id, // Assign to bot-assigned user or HOTEL customer
             callId: call.id,
             guestName: args.guestName,
             guestPhone: guestPhone || "Unknown",

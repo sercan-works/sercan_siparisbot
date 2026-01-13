@@ -20,17 +20,39 @@ export async function GET(req: NextRequest) {
     try {
         const reservations = await prisma.reservation.findMany({
             where: {
-                // If CUSTOMER (Hotel), show only their reservations
-                // If ADMIN, show all (or filter by org?)
+                // If CUSTOMER (Hotel), show reservations assigned to them OR reservations from bots they're assigned to
+                // If ADMIN, show all in organization
                 ...(role === "CUSTOMER" ? {
-                    // We need to find rooms owned by this customer?
-                    // Wait, reservation has `customerId`.
-                    customerId: userId
+                    OR: [
+                        { customerId: userId },
+                        { 
+                            call: {
+                                bot: {
+                                    assignments: {
+                                        some: { userId }
+                                    }
+                                }
+                            }
+                        }
+                    ]
                 } : {
                     customer: {
                         organizationId: organizationId
                     }
                 })
+            },
+            include: {
+                call: {
+                    select: {
+                        id: true,
+                        bot: {
+                            select: {
+                                id: true,
+                                name: true
+                            }
+                        }
+                    }
+                }
             },
             orderBy: {
                 createdAt: "desc"
