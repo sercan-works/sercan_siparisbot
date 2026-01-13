@@ -55,10 +55,10 @@ async function getReservations() {
     // Convert dates to strings for serialization
     return reservations.map((r: any) => ({
         ...r,
-        checkIn: r.checkIn.toISOString(),
-        checkOut: r.checkOut.toISOString(),
-        createdAt: r.createdAt.toISOString(),
-        updatedAt: r.updatedAt.toISOString(),
+        checkIn: r.checkIn?.toISOString(),
+        checkOut: r.checkOut?.toISOString(),
+        createdAt: r.createdAt?.toISOString(),
+        confirmedAt: r.confirmedAt?.toISOString() || null,
     }))
 }
 
