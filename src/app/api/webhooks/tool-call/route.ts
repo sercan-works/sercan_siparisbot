@@ -568,39 +568,74 @@ async function executeBuiltInTool(
         // customer_name is optional but preferred - use default if not provided
 
         // Find the correct user to assign the order to
-        // Priority: 1. call.initiatedById (user who initiated the call), 2. Bot-assigned user, 3. First user in org
+        // CRITICAL: Bot'a atanmış müşteri varsa kesinlikle ona atanmalı
+        // Priority: 1. Bot-assigned user (MANDATORY if exists), 2. First RESTAURANT customer in org, 3. Any user in org
         let assignedUser = null
         
-        // Priority 1: Use the user who initiated the call
-        if (call.initiatedById) {
-          assignedUser = await prisma.user.findUnique({
-            where: { id: call.initiatedById }
-          })
-          if (assignedUser) {
-            console.log("[create_order] Using call initiator as assigned user:", assignedUser.id)
-          }
-        }
-        
-        // Priority 2: Try to find a user assigned to this bot
-        if (!assignedUser && call.bot?.id) {
+        // Priority 1: Bot'a atanmış kullanıcıyı bul (ZORUNLU - eğer varsa)
+        if (call.bot?.id) {
           const botAssignment = await prisma.botAssignment.findFirst({
             where: { botId: call.bot.id },
-            include: { user: true }
+            include: { 
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  name: true,
+                  organizationId: true,
+                  customerType: true,
+                  role: true
+                }
+              }
+            },
+            orderBy: {
+              assignedAt: 'desc' // En son atanan kullanıcıyı al
+            }
           })
           
           if (botAssignment?.user) {
             assignedUser = botAssignment.user
-            console.log("[create_order] Using bot-assigned user:", assignedUser.id)
+            console.log("[create_order] ✓ Bot assignment found - assigning to:", {
+              userId: assignedUser.id,
+              email: assignedUser.email,
+              customerType: assignedUser.customerType
+            })
+          } else {
+            console.log("[create_order] ⚠ No bot assignment found for bot:", call.bot.id)
+          }
+        } else {
+          console.log("[create_order] ⚠ Bot ID not found in call object")
+        }
+        
+        // Priority 2: Fallback - Bot'a atanmış kullanıcı yoksa, RESTAURANT customerType'ına sahip kullanıcıyı bul
+        if (!assignedUser) {
+          assignedUser = await prisma.user.findFirst({
+            where: { 
+              organizationId: organizationId,
+              customerType: "RESTAURANT",
+              role: "CUSTOMER"
+            }
+          })
+          
+          if (assignedUser) {
+            console.log("[create_order] ⚠ Fallback: Found RESTAURANT customer in organization:", {
+              userId: assignedUser.id,
+              email: assignedUser.email
+            })
           }
         }
         
-        // Priority 3: Fallback to first user in organization
+        // Priority 3: Final fallback - Organization'daki herhangi bir kullanıcı
         if (!assignedUser) {
           assignedUser = await prisma.user.findFirst({
             where: { organizationId: organizationId }
           })
+          
           if (assignedUser) {
-            console.log("[create_order] Using first user in organization as fallback:", assignedUser.id)
+            console.log("[create_order] ⚠ Final fallback: Found any user in organization:", {
+              userId: assignedUser.id,
+              email: assignedUser.email
+            })
           }
         }
 
