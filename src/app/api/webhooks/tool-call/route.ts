@@ -14,6 +14,17 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
 
+    // Check headers for Retell Custom Function name (Retell may send it in headers)
+    const headers = req.headers
+    const functionNameFromHeader = headers.get("x-retell-function-name") || 
+                                   headers.get("x-function-name") ||
+                                   headers.get("function-name")
+
+    // Check query parameters
+    const { searchParams } = new URL(req.url)
+    const functionNameFromQuery = searchParams.get("function_name") || 
+                                  searchParams.get("functionName")
+
     // Extract tool call information - support both snake_case and camelCase
     // Retell Custom Functions use "function_name", while LLM tools use "tool_name"
     const {
@@ -22,24 +33,64 @@ export async function POST(req: NextRequest) {
       tool_call_id: extractedToolCallId,
       tool_name,
       toolName, // Alternative camelCase format
-      function_name, // Retell Custom Function format
-      functionName, // Alternative camelCase format
+      function_name, // Retell Custom Function format (in body)
+      functionName, // Alternative camelCase format (in body)
       arguments: toolArgs,
     } = body
 
     // Use call_id or callId (camelCase alternative)
     const retellCallId = call_id || callId
     tool_call_id = extractedToolCallId || body.tool_call_id || body.toolCallId
-    // Support both Retell Custom Function format (function_name) and LLM tool format (tool_name)
-    const toolNameToUse = function_name || functionName || tool_name || toolName
+    
+    // Support multiple sources for function name:
+    // 1. Header (x-retell-function-name, x-function-name, function-name)
+    // 2. Query parameter (function_name, functionName)
+    // 3. Body (function_name, functionName, tool_name, toolName)
+    let toolNameToUse = functionNameFromHeader || 
+                        functionNameFromQuery || 
+                        function_name || 
+                        functionName || 
+                        tool_name || 
+                        toolName
+
+    // If still no tool name but we have arguments that look like reservation/order data, infer it
+    let inferredToolName: string | undefined = undefined
+    if (!toolNameToUse && toolArgs) {
+      const hasReservationFields = toolArgs.checkIn && toolArgs.checkOut && toolArgs.guestName && toolArgs.roomType
+      const hasOrderFields = toolArgs.items
+      if (hasReservationFields) {
+        inferredToolName = "create_reservation"
+        console.log("[tool-call] Inferring tool name 'create_reservation' from arguments structure")
+        toolNameToUse = inferredToolName
+      } else if (hasOrderFields) {
+        inferredToolName = "create_order"
+        console.log("[tool-call] Inferring tool name 'create_order' from arguments structure")
+        toolNameToUse = inferredToolName
+      }
+    }
+    
+    // Final tool name to use throughout the function
+    const finalToolNameToUse = toolNameToUse
 
     console.log("Tool call received - full body:", JSON.stringify(body, null, 2))
+    console.log("Tool call received - headers:", {
+      "x-retell-function-name": headers.get("x-retell-function-name"),
+      "x-function-name": headers.get("x-function-name"),
+      "function-name": headers.get("function-name")
+    })
+    console.log("Tool call received - query params:", {
+      function_name: searchParams.get("function_name"),
+      functionName: searchParams.get("functionName")
+    })
     console.log("Tool call received - extracted:", {
       call_id: retellCallId,
       tool_call_id,
-      tool_name: toolNameToUse,
+      tool_name: finalToolNameToUse,
       arguments: toolArgs,
-      has_agent_id: !!body.agent_id || !!body.agentId
+      has_agent_id: !!body.agent_id || !!body.agentId,
+      functionNameFromHeader,
+      functionNameFromQuery,
+      inferredToolName
     })
 
     // Handle case where call_id is missing but agent_id is provided (test scenario)
@@ -66,12 +117,12 @@ export async function POST(req: NextRequest) {
       } else {
         // Try to find bot based on tool_name (smart fallback for testing)
         // For create_order, find a restaurant bot. For create_reservation, find a hotel bot.
-        console.log("No call_id or agent_id found, attempting to find suitable bot based on tool_name:", toolNameToUse)
+        console.log("No call_id or agent_id found, attempting to find suitable bot based on tool_name:", finalToolNameToUse)
         try {
           let anyBot: any = null
           
           // Try to find bot that has the tool defined (best match)
-          if (toolNameToUse === "create_order") {
+          if (finalToolNameToUse === "create_order") {
             // Find a bot that has create_order tool (usually restaurant bots)
             const bots = await prisma.bot.findMany({
               select: {
@@ -113,7 +164,7 @@ export async function POST(req: NextRequest) {
                 })
               }
             }
-          } else if (toolNameToUse === "create_reservation") {
+          } else if (finalToolNameToUse === "create_reservation") {
             // Similar logic for hotel reservations
             const hotelOrg = await prisma.user.findFirst({
               where: { customerType: "HOTEL" },
@@ -148,7 +199,7 @@ export async function POST(req: NextRequest) {
           }
           
           if (anyBot) {
-            console.log("Found fallback bot for testing:", anyBot.id, "(tool:", toolNameToUse + ")")
+            console.log("Found fallback bot for testing:", anyBot.id, "(tool:", finalToolNameToUse + ")")
             agentId = anyBot.retellAgentId
             finalRetellCallId = `test_${Date.now()}_${Math.random().toString(36).substring(7)}`
             isTestCall = true
@@ -297,25 +348,25 @@ export async function POST(req: NextRequest) {
     let tools = (call.bot.customTools as any[]) || []
     console.log(`[tool-call] Bot found - ID: ${call.bot.organizationId}, Tools count: ${tools.length}`)
     console.log(`[tool-call] Bot tools:`, JSON.stringify(tools.map((t: any) => t.function?.name), null, 2))
-    console.log(`[tool-call] Looking for tool: ${toolNameToUse}`)
+    console.log(`[tool-call] Looking for tool: ${finalToolNameToUse}`)
     
-    let toolDef = tools.find(t => t.function?.name === toolNameToUse)
+    let toolDef = tools.find(t => t.function?.name === finalToolNameToUse)
 
     // If tool not found and it's a built-in tool (create_order, create_reservation), try to inject it
     // This handles cases where bot's customTools is null or empty
-    if (!toolDef && toolNameToUse && (toolNameToUse === "create_order" || toolNameToUse === "create_reservation" || toolNameToUse === "check_availability")) {
-      console.log(`[tool-call] Tool '${toolNameToUse}' not found in bot's customTools (count: ${tools.length}), attempting to inject built-in tool...`)
+    if (!toolDef && finalToolNameToUse && (finalToolNameToUse === "create_order" || finalToolNameToUse === "create_reservation" || finalToolNameToUse === "check_availability")) {
+      console.log(`[tool-call] Tool '${finalToolNameToUse}' not found in bot's customTools (count: ${tools.length}), attempting to inject built-in tool...`)
       
       try {
         // Import built-in tools
         const { CREATE_ORDER_TOOL, CREATE_RESERVATION_TOOL, CHECK_AVAILABILITY_TOOL } = await import("@/lib/tools")
         
         let builtInTool = null
-        if (toolNameToUse === "create_order") {
+        if (finalToolNameToUse === "create_order") {
           builtInTool = CREATE_ORDER_TOOL
-        } else if (toolNameToUse === "create_reservation") {
+        } else if (finalToolNameToUse === "create_reservation") {
           builtInTool = CREATE_RESERVATION_TOOL
-        } else if (toolNameToUse === "check_availability") {
+        } else if (finalToolNameToUse === "check_availability") {
           builtInTool = CHECK_AVAILABILITY_TOOL
         }
         
@@ -323,9 +374,9 @@ export async function POST(req: NextRequest) {
           // Use the built-in tool definition (in-memory, doesn't update DB)
           toolDef = builtInTool
           tools = [...tools, builtInTool]
-          console.log(`[tool-call] ✓ Injected built-in tool '${toolNameToUse}' for this request`)
+          console.log(`[tool-call] ✓ Injected built-in tool '${finalToolNameToUse}' for this request`)
         } else {
-          console.error(`[tool-call] Built-in tool '${toolNameToUse}' not found in tools library`)
+          console.error(`[tool-call] Built-in tool '${finalToolNameToUse}' not found in tools library`)
         }
       } catch (importError) {
         console.error("[tool-call] Failed to import built-in tools:", importError)
@@ -333,10 +384,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (!toolDef) {
-      console.error("Tool not found:", toolNameToUse, "Available tools:", tools.map((t: any) => t.function?.name || 'null'))
+      console.error("Tool not found:", finalToolNameToUse, "Available tools:", tools.map((t: any) => t.function?.name || 'null'))
       console.error("Bot customTools raw:", JSON.stringify(call.bot.customTools, null, 2))
       return NextResponse.json({
-        result: `Error: Tool '${toolNameToUse || 'unknown'}' not found. Available tools: ${tools.map((t: any) => t.function?.name || 'unknown').join(', ') || '(none)'}. Please update the bot to include this tool.`,
+        result: `Error: Tool '${finalToolNameToUse || 'unknown'}' not found. Available tools: ${tools.map((t: any) => t.function?.name || 'unknown').join(', ') || '(none)'}. Please update the bot to include this tool.`,
         tool_call_id
       }, { status: 200 }) // Return 200 so Retell doesn't retry
     }
@@ -345,7 +396,7 @@ export async function POST(req: NextRequest) {
     let result: any
 
     try {
-      console.log(`[tool-call] Executing tool: ${toolNameToUse}, has URL: ${!!toolDef.function.url}`)
+      console.log(`[tool-call] Executing tool: ${finalToolNameToUse}, has URL: ${!!toolDef.function.url}`)
       
       if (toolDef.function.url) {
         // External webhook-based tool
@@ -356,7 +407,7 @@ export async function POST(req: NextRequest) {
             body: JSON.stringify({
               call_id: finalRetellCallId,
               tool_call_id,
-              tool_name: toolNameToUse,
+              tool_name: finalToolNameToUse,
               arguments: toolArgs,
               organization_id: call.bot.organizationId
             })
@@ -377,8 +428,8 @@ export async function POST(req: NextRequest) {
         }
       } else {
         // Built-in tool execution logic
-        console.log(`[tool-call] Executing built-in tool: ${toolNameToUse}`)
-        result = await executeBuiltInTool(toolNameToUse, toolArgs, call)
+        console.log(`[tool-call] Executing built-in tool: ${finalToolNameToUse}`)
+        result = await executeBuiltInTool(finalToolNameToUse, toolArgs, call)
         console.log(`[tool-call] Built-in tool result:`, result)
       }
 
