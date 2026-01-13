@@ -63,6 +63,26 @@ export const CREATE_RESERVATION_TOOL = {
                 specialRequests: {
                     type: "string",
                     description: "Any special requests (e.g. 'Late check-in', 'High floor'). Optional."
+                },
+                totalPrice: {
+                    type: "number",
+                    description: "Total price for the reservation in local currency. If discussed with the guest, include this."
+                },
+                adultPrice: {
+                    type: "number",
+                    description: "Price per adult if mentioned separately. Optional."
+                },
+                childPrice: {
+                    type: "number",
+                    description: "Price per child if mentioned separately. Optional."
+                },
+                numberOfAdults: {
+                    type: "number",
+                    description: "Number of adults if specified separately from total guests. Optional."
+                },
+                numberOfChildren: {
+                    type: "number",
+                    description: "Number of children if specified separately. Optional."
                 }
             },
             required: ["checkIn", "checkOut", "guests", "guestName", "roomType"]

@@ -946,6 +946,41 @@ async function executeBuiltInTool(
           throw new Error("Check-out tarihi check-in tarihinden sonra olmalıdır")
         }
 
+        // Calculate total price
+        // Priority: 1. totalPrice (if provided), 2. Calculate from adultPrice/childPrice, 3. null
+        let totalPrice: number | null = null
+        
+        if (args.totalPrice !== undefined && args.totalPrice !== null) {
+          // Use provided totalPrice
+          if (typeof args.totalPrice === 'number') {
+            totalPrice = args.totalPrice
+          } else {
+            // Remove currency symbols and parse
+            const cleaned = String(args.totalPrice).replace(/[^0-9.]/g, "")
+            totalPrice = parseFloat(cleaned) || null
+          }
+        } else if (args.adultPrice !== undefined || args.childPrice !== undefined) {
+          // Calculate from adultPrice and childPrice
+          const numberOfAdults = args.numberOfAdults || args.guests || 0
+          const numberOfChildren = args.numberOfChildren || 0
+          const adultPrice = typeof args.adultPrice === 'number' ? args.adultPrice : 
+                            (args.adultPrice ? parseFloat(String(args.adultPrice).replace(/[^0-9.]/g, "")) : 0)
+          const childPrice = typeof args.childPrice === 'number' ? args.childPrice : 
+                            (args.childPrice ? parseFloat(String(args.childPrice).replace(/[^0-9.]/g, "")) : 0)
+          
+          totalPrice = (adultPrice * numberOfAdults) + (childPrice * numberOfChildren)
+          if (totalPrice === 0) totalPrice = null
+        }
+
+        console.log("[create_reservation] Price calculation:", {
+          totalPrice: args.totalPrice,
+          adultPrice: args.adultPrice,
+          childPrice: args.childPrice,
+          numberOfAdults: args.numberOfAdults,
+          numberOfChildren: args.numberOfChildren,
+          calculatedTotalPrice: totalPrice
+        })
+
         // Create reservation
         // Similar to create_order - no database lookup for room types
         // All room type info comes from prompt, we just store the name
@@ -962,6 +997,7 @@ async function executeBuiltInTool(
             roomTypeId: null, // No room type ID lookup - info comes from prompt
             roomType: args.roomType, // Store room type name as string (from prompt)
             status: "PENDING",
+            totalPrice: totalPrice,
             specialRequests: args.specialRequests || null
           }
         })

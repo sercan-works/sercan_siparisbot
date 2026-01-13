@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
-import { Calendar, Phone, User, Home, Clock, Search, CalendarCheck, CalendarX, X, RotateCcw } from "lucide-react"
+import { Calendar, Phone, User, Home, Clock, Search, CalendarCheck, CalendarX, X, RotateCcw, DollarSign } from "lucide-react"
 
 interface Reservation {
     id: string
@@ -17,10 +17,12 @@ interface Reservation {
     checkIn: string
     checkOut: string
     numberOfGuests: number
+    numberOfRooms?: number
     roomType: string | null
     status: string
     createdAt: string
     callId: string
+    totalPrice?: number | null
     specialRequests?: string | null
     call?: {
         id: string
@@ -181,6 +183,7 @@ export default function ReservationList({ initialReservations }: ReservationList
                                         </div>
                                         <div className="text-sm text-gray-600 ml-6">
                                             {res.numberOfGuests} {res.numberOfGuests === 1 ? "Kişi" : "Kişi"}
+                                            {res.numberOfRooms && res.numberOfRooms > 1 && ` • ${res.numberOfRooms} Oda`}
                                         </div>
                                     </div>
                                     <div className="space-y-2">
@@ -196,6 +199,31 @@ export default function ReservationList({ initialReservations }: ReservationList
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Price Info */}
+                                {res.totalPrice && res.totalPrice > 0 && (
+                                    <div className="pt-2 border-t border-gray-100">
+                                        <div className="flex items-center justify-between bg-green-50 px-4 py-3 rounded-lg border border-green-100">
+                                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                                                <DollarSign className="w-4 h-4 text-green-600" />
+                                                <span className="font-medium">Toplam Fiyat:</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-lg font-bold text-green-700">
+                                                    {res.totalPrice.toLocaleString('tr-TR', { 
+                                                        minimumFractionDigits: 2, 
+                                                        maximumFractionDigits: 2 
+                                                    })} ₺
+                                                </div>
+                                                {nights > 0 && (
+                                                    <div className="text-xs text-gray-500 mt-1">
+                                                        {Math.round(res.totalPrice / nights).toLocaleString('tr-TR')} ₺ / gece
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Special Requests */}
                                 {res.specialRequests && (

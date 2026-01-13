@@ -41,7 +41,22 @@ export async function GET(req: NextRequest) {
                     }
                 })
             },
-            include: {
+            select: {
+                id: true,
+                guestName: true,
+                guestPhone: true,
+                guestEmail: true,
+                checkIn: true,
+                checkOut: true,
+                numberOfGuests: true,
+                numberOfRooms: true,
+                roomType: true,
+                roomTypeId: true,
+                status: true,
+                totalPrice: true,
+                specialRequests: true,
+                createdAt: true,
+                callId: true,
                 call: {
                     select: {
                         id: true,
