@@ -712,21 +712,18 @@ async function executeBuiltInTool(
           throw new Error("Invalid date format. Dates must be in YYYY-MM-DD format")
         }
 
-        // Find room type in this organization
-        const roomType = await prisma.roomType.findFirst({
-          where: {
-            organizationId: organizationId,
-            name: { contains: args.roomType, mode: "insensitive" },
-            isActive: true
-          },
-          include: {
-            customer: true
-          }
+        // Find a default user for this org to assign the reservation to (usually the admin/owner)
+        // Similar to create_order - no database lookup for room types, all info comes from prompt
+        const defaultUser = await prisma.user.findFirst({
+          where: { organizationId: organizationId }
         })
 
-        if (!roomType) {
-          throw new Error(`Oda tipi '${args.roomType}' bulunamadı. Lütfen tam adını söyleyiniz.`)
+        if (!defaultUser) {
+          throw new Error(`No user found for organization ${organizationId} to assign reservation`)
         }
+
+        console.log("[create_reservation] Found user:", defaultUser.id)
+        console.log("[create_reservation] Room type from prompt:", args.roomType)
 
         // Get guest phone from args or call
         // Priority: 1. args.guestPhone (from Retell function call), 2. call.fromNumber (from DB), 3. Retell API
@@ -774,9 +771,11 @@ async function executeBuiltInTool(
         }
 
         // Create reservation
+        // Similar to create_order - no database lookup for room types
+        // All room type info comes from prompt, we just store the name
         const reservation = await prisma.reservation.create({
           data: {
-            customerId: roomType.customerId,
+            customerId: defaultUser.id, // Assign to organization owner (like create_order)
             callId: call.id,
             guestName: args.guestName,
             guestPhone: guestPhone || "Unknown",
@@ -784,8 +783,8 @@ async function executeBuiltInTool(
             checkOut: checkOutDate,
             numberOfGuests: args.guests,
             numberOfRooms: 1, // Default to 1 room
-            roomTypeId: roomType.id,
-            roomType: args.roomType,
+            roomTypeId: null, // No room type ID lookup - info comes from prompt
+            roomType: args.roomType, // Store room type name as string (from prompt)
             status: "PENDING",
             specialRequests: args.specialRequests || null
           }
