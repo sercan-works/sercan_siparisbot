@@ -23,7 +23,10 @@ export default async function CallDetailsPage({
     where: {
       id: params.callId,
       organizationId: session.user.organizationId,
-      initiatedById: session.user.id
+      OR: [
+        { initiatedById: session.user.id },
+        { bot: { assignments: { some: { userId: session.user.id } } } }
+      ]
     },
     include: {
       bot: { select: { id: true, name: true } },
