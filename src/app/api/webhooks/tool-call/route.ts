@@ -26,7 +26,10 @@ export async function POST(req: NextRequest) {
                                   searchParams.get("functionName")
 
     // Extract tool call information - support both snake_case and camelCase
-    // Retell Custom Functions use "function_name", while LLM tools use "tool_name"
+    // Retell Custom Functions use different formats:
+    // - "Payload: args only: True" -> body is directly arguments
+    // - "Payload: args only: False" -> body has { name, args, call } structure
+    // - LLM tools use "tool_name" format
     const {
       call_id,
       callId, // Alternative camelCase format
@@ -35,19 +38,31 @@ export async function POST(req: NextRequest) {
       toolName, // Alternative camelCase format
       function_name, // Retell Custom Function format (in body)
       functionName, // Alternative camelCase format (in body)
-      arguments: toolArgs,
+      name, // Retell Custom Function format when "Payload: args only: False"
+      arguments: toolArgsFromKey,
+      args, // Retell Custom Function format when "Payload: args only: False" (uses "args" not "arguments")
     } = body
 
-    // Use call_id or callId (camelCase alternative)
-    const retellCallId = call_id || callId
+    // Extract call_id from nested call object if present (Payload: args only: False mode)
+    const callObject = body.call
+    const callIdFromCallObject = callObject?.call_id
+
+    // Use call_id from multiple sources
+    const retellCallId = call_id || callId || callIdFromCallObject
     tool_call_id = extractedToolCallId || body.tool_call_id || body.toolCallId
+    
+    // Get arguments from multiple sources
+    // Priority: 1. body.arguments, 2. body.args (Retell "Payload: args only: False"), 3. body itself (Payload: args only: True)
+    let toolArgs = toolArgsFromKey || args
     
     // Support multiple sources for function name:
     // 1. Header (x-retell-function-name, x-function-name, function-name)
     // 2. Query parameter (function_name, functionName)
-    // 3. Body (function_name, functionName, tool_name, toolName)
+    // 3. Body.name (Retell "Payload: args only: False" mode)
+    // 4. Body (function_name, functionName, tool_name, toolName)
     let toolNameToUse = functionNameFromHeader || 
                         functionNameFromQuery || 
+                        name || // Retell "Payload: args only: False" uses "name" field
                         function_name || 
                         functionName || 
                         tool_name || 
@@ -69,6 +84,9 @@ export async function POST(req: NextRequest) {
       }
     }
     
+    // Also extract agent_id from call object if present
+    const agentIdFromCallObject = callObject?.agent_id
+    
     // Final tool name to use throughout the function
     const finalToolNameToUse = toolNameToUse
 
@@ -87,17 +105,21 @@ export async function POST(req: NextRequest) {
       tool_call_id,
       tool_name: finalToolNameToUse,
       arguments: toolArgs,
-      has_agent_id: !!body.agent_id || !!body.agentId,
+      has_agent_id: !!body.agent_id || !!body.agentId || !!agentIdFromCallObject,
       functionNameFromHeader,
       functionNameFromQuery,
-      inferredToolName
+      inferredToolName,
+      bodyName: body.name,
+      bodyArgs: body.args,
+      bodyArguments: body.arguments,
+      callObjectCallId: callIdFromCallObject
     })
 
     // Handle case where call_id is missing but agent_id is provided (test scenario)
     // Check for agent_id in multiple possible locations
     let agentId = body.agent_id || body.agentId || 
                   body.metadata?.agent_id || body.metadata?.agentId ||
-                  body.call?.agent_id || body.call?.agentId
+                  callObject?.agent_id || agentIdFromCallObject
     
     // Also check all top-level keys to see what we have
     const allKeys = Object.keys(body)
