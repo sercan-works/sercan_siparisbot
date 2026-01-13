@@ -63,7 +63,7 @@ export default function LiveOrdersPage() {
   const [loading, setLoading] = useState(true)
   const [previousOrderIds, setPreviousOrderIds] = useState<Set<string>>(new Set())
   const [newOrderIds, setNewOrderIds] = useState<Set<string>>(new Set())
-  const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending")
+  const [activeTab, setActiveTab] = useState<"pending" | "preparing" | "completed">("pending")
   const [searchQuery, setSearchQuery] = useState("")
   const [refreshInterval, setRefreshInterval] = useState(10000)
   const [autoRefresh, setAutoRefresh] = useState(true)
@@ -109,11 +109,21 @@ export default function LiveOrdersPage() {
         const data = await response.json()
         const newOrders = data.orders || []
 
-        // Detect new orders
+        // Detect new orders - only show notification if we're on pending tab and there are actually new pending orders
         const currentOrderIds = new Set<string>(newOrders.map((o: Order) => o.id))
         const newlyAdded = newOrders.filter((o: Order) => !previousOrderIds.has(o.id))
         
-        if (newlyAdded.length > 0 && previousOrderIds.size > 0) {
+        // Only show notification if:
+        // 1. We're on the pending tab
+        // 2. There are new orders
+        // 3. Previous orders existed (not first load)
+        // 4. New orders are actually pending (not completed)
+        if (
+          activeTab === "pending" &&
+          newlyAdded.length > 0 && 
+          previousOrderIds.size > 0 &&
+          newlyAdded.some((o: Order) => o.status !== "COMPLETED" && o.status !== "CANCELLED")
+        ) {
           // Sound notification
           if (settings.soundEnabled && audioRef.current) {
             audioRef.current.volume = settings.soundVolume / 100
@@ -147,10 +157,18 @@ export default function LiveOrdersPage() {
     }
   }
 
+  // Reset previous order IDs when tab changes to avoid false notifications
+  useEffect(() => {
+    setPreviousOrderIds(new Set())
+    setNewOrderIds(new Set())
+  }, [activeTab])
+
   // Auto-refresh with configurable interval
   useEffect(() => {
     if (activeTab === "pending") {
       fetchOrders("PENDING")
+    } else if (activeTab === "preparing") {
+      fetchOrders("PREPARING")
     } else {
       fetchOrders("COMPLETED")
     }
@@ -159,6 +177,8 @@ export default function LiveOrdersPage() {
       const interval = setInterval(() => {
         if (activeTab === "pending") {
           fetchOrders("PENDING")
+        } else if (activeTab === "preparing") {
+          fetchOrders("PREPARING")
         } else {
           fetchOrders("COMPLETED")
         }
@@ -171,7 +191,9 @@ export default function LiveOrdersPage() {
   const filteredOrders = useMemo(() => {
     const statusFiltered = allOrders.filter(order => {
       if (activeTab === "pending") {
-        return order.status !== "COMPLETED" && order.status !== "CANCELLED"
+        return order.status === "PENDING"
+      } else if (activeTab === "preparing") {
+        return order.status === "PREPARING" || order.status === "READY"
       } else {
         return order.status === "COMPLETED"
       }
@@ -240,7 +262,8 @@ export default function LiveOrdersPage() {
     return `${diffMinutes} dakika önce`
   }
 
-  const pendingOrders = allOrders.filter(o => o.status !== "COMPLETED" && o.status !== "CANCELLED")
+  const pendingOrders = allOrders.filter(o => o.status === "PENDING")
+  const preparingOrders = allOrders.filter(o => o.status === "PREPARING" || o.status === "READY")
   const completedOrders = allOrders.filter(o => o.status === "COMPLETED")
 
   if (loading) {
@@ -299,6 +322,8 @@ export default function LiveOrdersPage() {
           <Button onClick={() => {
             if (activeTab === "pending") {
               fetchOrders("PENDING")
+            } else if (activeTab === "preparing") {
+              fetchOrders("PREPARING")
             } else {
               fetchOrders("COMPLETED")
             }
@@ -328,14 +353,23 @@ export default function LiveOrdersPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "pending" | "completed")} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-md mb-6">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "pending" | "preparing" | "completed")} className="w-full">
+        <TabsList className="grid w-full grid-cols-3 max-w-2xl mb-6">
           <TabsTrigger value="pending" className="flex items-center gap-2">
             <Package className="w-4 h-4" />
             Bekleyen Siparişler
             {pendingOrders.length > 0 && (
               <Badge variant="secondary" className="ml-1">
                 {pendingOrders.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="preparing" className="flex items-center gap-2">
+            <ChefHat className="w-4 h-4" />
+            Hazırlanan Siparişler
+            {preparingOrders.length > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {preparingOrders.length}
               </Badge>
             )}
           </TabsTrigger>
@@ -453,15 +487,135 @@ export default function LiveOrdersPage() {
                           {order.status === "PENDING" && (
                             <Button
                               variant="default"
-                              onClick={() => updateOrderStatus(order.id, "PREPARING")}
+                              onClick={() => {
+                                updateOrderStatus(order.id, "PREPARING")
+                                // Switch to preparing tab after moving order
+                                setTimeout(() => setActiveTab("preparing"), 500)
+                              }}
                             >
                               <ChefHat className="h-4 w-4 mr-2" />
                               Hazırla
                             </Button>
                           )}
+                        </div>
+
+                        {/* Transcript Link */}
+                        {order.call.transcript && (
+                          <details className="text-xs">
+                            <summary className="cursor-pointer text-gray-600 hover:text-gray-900">
+                              Görüşme Kaydı
+                            </summary>
+                            <p className="mt-2 text-gray-700 whitespace-pre-wrap bg-gray-50 p-2 rounded max-h-32 overflow-y-auto">
+                              {order.call.transcript}
+                            </p>
+                          </details>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="preparing" className="mt-0">
+          {filteredOrders.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <ChefHat className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-xl text-gray-600 font-semibold">
+                  {searchQuery ? "Arama sonucu bulunamadı" : "Hazırlanan sipariş yok"}
+                </p>
+                <p className="text-sm text-gray-500 mt-2">
+                  {searchQuery 
+                    ? "Farklı bir arama terimi deneyin."
+                    : "Hazırlanan siparişler burada görünecek"}
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4 mb-4">
+              <div className="text-sm text-gray-600">
+                {filteredOrders.length} {filteredOrders.length === 1 ? "sipariş bulundu" : "sipariş bulundu"}
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {filteredOrders.map((order) => {
+                  const StatusIcon = statusIcons[order.status]
+                  return (
+                    <Card
+                      key={order.id}
+                      className={`relative border-2 transition-all duration-300 ${
+                        order.status === "PREPARING" 
+                          ? "border-yellow-500 shadow-md hover:shadow-lg" 
+                          : "border-blue-500 shadow-md hover:shadow-lg"
+                      }`}
+                    >
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <CardTitle className="text-lg">{order.customerName}</CardTitle>
+                            <p className="text-sm text-gray-600 mt-1">
+                              {formatTime(order.createdAt)} - {getTimeSince(order.createdAt)}
+                            </p>
+                            {order.customerPhone && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                📞 {order.customerPhone}
+                              </p>
+                            )}
+                          </div>
+                          <Badge className={statusColors[order.status]}>
+                            <StatusIcon className="h-4 w-4 mr-1" />
+                            {order.status === "PREPARING" ? "Hazırlanıyor" : "Hazır"}
+                          </Badge>
+                        </div>
+                      </CardHeader>
+
+                      <CardContent className="space-y-4">
+                        {/* Sipariş Detayları */}
+                        <div>
+                          <h4 className="font-semibold text-sm mb-2">Sipariş:</h4>
+                          <p className="text-sm whitespace-pre-wrap bg-gray-50 p-3 rounded">
+                            {order.items}
+                          </p>
+                        </div>
+
+                        {/* Teslimat Adresi */}
+                        {order.deliveryAddress && (
+                          <div>
+                            <h4 className="font-semibold text-sm mb-2">Adres:</h4>
+                            <p className="text-sm text-gray-700">{order.deliveryAddress}</p>
+                          </div>
+                        )}
+
+                        {/* Notlar */}
+                        {order.notes && (
+                          <div>
+                            <h4 className="font-semibold text-sm mb-2">Notlar:</h4>
+                            <p className="text-sm text-gray-700">{order.notes}</p>
+                          </div>
+                        )}
+
+                        {/* Tutar */}
+                        {order.totalAmount && (
+                          <div className="pt-2 border-t">
+                            <p className="text-lg font-bold">
+                              Toplam: {order.totalAmount.toFixed(2)} TL
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Aksiyon Butonları */}
+                        <div className="grid grid-cols-2 gap-2 pt-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => router.push(`/customer/orders/${order.id}`)}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            Detay
+                          </Button>
                           {order.status === "PREPARING" && (
                             <Button
-                              className="col-span-2"
                               variant="default"
                               onClick={() => updateOrderStatus(order.id, "READY")}
                             >
@@ -469,11 +623,15 @@ export default function LiveOrdersPage() {
                               Hazır İşaretle
                             </Button>
                           )}
-                          {order.status === "READY" && (
+                          {(order.status === "PREPARING" || order.status === "READY") && (
                             <Button
                               className="col-span-2"
                               variant="default"
-                              onClick={() => updateOrderStatus(order.id, "COMPLETED")}
+                              onClick={() => {
+                                updateOrderStatus(order.id, "COMPLETED")
+                                // Switch to completed tab after completing order
+                                setTimeout(() => setActiveTab("completed"), 500)
+                              }}
                             >
                               <Check className="h-4 w-4 mr-2" />
                               Tamamlandı
