@@ -56,7 +56,7 @@ export default async function BotDetailsPage({
   }
 
   return (
-    <div className="p-8">
+    <div className="p-2 max-w-6xl mx-auto">
       <div className="mb-8">
         <Link
           href="/admin/bots"
