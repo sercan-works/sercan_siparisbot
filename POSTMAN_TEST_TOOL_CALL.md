@@ -538,3 +538,382 @@ GET https://siparisbot.vercel.app/api/orders
 
 **Tavsiye:** Her zaman Senaryo 1'i kullanın! En basit ve en hızlı yöntem.
 
+---
+
+# 🏨 create_reservation Endpoint Test Rehberi
+
+## ⚡ Hızlı Başlangıç (30 Saniye)
+
+**Call ID'ye ihtiyacınız YOK!** Sadece şunu gönderin:
+
+```bash
+POST https://siparisbot.vercel.app/api/webhooks/tool-call
+
+Headers:
+Content-Type: application/json
+
+Body:
+{
+  "tool_call_id": "test_reservation_123",
+  "tool_name": "create_reservation",
+  "arguments": {
+    "checkIn": "2024-12-20",
+    "checkOut": "2024-12-22",
+    "guests": 2,
+    "guestName": "Test Müşteri",
+    "roomType": "Standard"
+  }
+}
+```
+
+✅ Sistem otomatik olarak:
+- Uygun bot'u bulur (`create_reservation` için hotel bot)
+- Test call kaydı oluşturur
+- Rezervasyonu başarıyla oluşturur
+
+---
+
+## 🎯 Endpoint Bilgileri
+
+**URL:** `POST https://siparisbot.vercel.app/api/webhooks/tool-call`
+
+**Not:** Bu endpoint `call_id` olmadan da çalışabilir! Sistem otomatik olarak test call kaydı oluşturur.
+
+## 📋 Request Format
+
+### Headers
+```
+Content-Type: application/json
+```
+
+### Body (JSON)
+
+## 🚀 create_reservation Test Senaryoları
+
+### ✅ Senaryo 1: Call ID OLMAYAN Test (EN KOLAY - ÖNERİLEN)
+
+**Bu senaryo call_id göndermeden test yapmak için ideal!** Sistem otomatik olarak:
+- `tool_name`'e göre uygun bot'u bulur (`create_reservation` için hotel bot)
+- Test amaçlı geçici call kaydı oluşturur
+- Rezervasyonu başarıyla oluşturur
+
+```json
+{
+  "tool_call_id": "test_reservation_{{$timestamp}}",
+  "tool_name": "create_reservation",
+  "arguments": {
+    "checkIn": "2024-12-20",
+    "checkOut": "2024-12-22",
+    "guests": 2,
+    "guestName": "Ahmet Yılmaz",
+    "roomType": "Standard",
+    "guestPhone": "+905551234567",
+    "specialRequests": "Late check-in"
+  }
+}
+```
+
+**Minimal Versiyon (Sadece Zorunlu Alanlar):**
+```json
+{
+  "tool_call_id": "test_reservation_{{$timestamp}}",
+  "tool_name": "create_reservation",
+  "arguments": {
+    "checkIn": "2024-12-20",
+    "checkOut": "2024-12-22",
+    "guests": 2,
+    "guestName": "Test Müşteri",
+    "roomType": "Standard"
+  }
+}
+```
+
+### ✅ Senaryo 2: Agent ID ile Test (Call ID Olmadan)
+
+Eğer belirli bir hotel bot kullanmak istiyorsanız, `agent_id` ekleyin:
+
+```json
+{
+  "tool_call_id": "test_reservation_{{$timestamp}}",
+  "tool_name": "create_reservation",
+  "agent_id": "YOUR_RETELL_AGENT_ID",
+  "arguments": {
+    "checkIn": "2024-12-25",
+    "checkOut": "2024-12-28",
+    "guests": 4,
+    "guestName": "Mehmet Demir",
+    "roomType": "Deluxe",
+    "guestPhone": "+905551234567",
+    "specialRequests": "High floor preferred"
+  }
+}
+```
+
+### ✅ Senaryo 3: Call ID ile Test (Gerçek Call Senaryosu)
+
+Gerçek bir call kaydı varsa ve ona bağlı rezervasyon oluşturmak istiyorsanız:
+
+```json
+{
+  "call_id": "YOUR_RETELL_CALL_ID",
+  "tool_call_id": "test_reservation_123",
+  "tool_name": "create_reservation",
+  "arguments": {
+    "checkIn": "2024-12-20",
+    "checkOut": "2024-12-22",
+    "guests": 2,
+    "guestName": "Ahmet Yılmaz",
+    "roomType": "Standard",
+    "guestPhone": "+905551234567",
+    "specialRequests": "Non-smoking room"
+  },
+  "agent_id": "YOUR_RETELL_AGENT_ID"
+}
+```
+
+## 📝 create_reservation İçin Gerekli Parametreler
+
+### Zorunlu Parametreler:
+- ✅ `checkIn`: Check-in tarihi (YYYY-MM-DD formatında, örn: "2024-12-20")
+- ✅ `checkOut`: Check-out tarihi (YYYY-MM-DD formatında, örn: "2024-12-22")
+- ✅ `guests`: Misafir sayısı (number, minimum 1)
+- ✅ `guestName`: Misafir adı (string, minimum 2 karakter)
+- ✅ `roomType`: Oda tipi adı (string, örn: "Standard", "Deluxe", "Suite")
+
+### Opsiyonel Parametreler:
+- ⚪ `guestPhone`: Misafir telefon numarası (string)
+- ⚪ `specialRequests`: Özel istekler (string, örn: "Late check-in", "High floor")
+
+## 🚀 Postman Test Adımları (create_reservation)
+
+### Adım 1: Request Oluştur
+
+1. **Yeni Request oluşturun:**
+   - Collection'a sağ tıklayın → **"Add Request"**
+   - Request adı: `Create Reservation - No Call ID (Easiest)`
+
+2. **Request ayarları:**
+   - Method: **POST** (dropdown'dan seçin)
+   - URL: `{{BASE_URL}}/api/webhooks/tool-call`
+     - Veya direkt: `https://siparisbot.vercel.app/api/webhooks/tool-call`
+
+3. **Headers ekleyin:**
+   - **Headers** tab'ına gidin
+   - **Key:** `Content-Type`
+   - **Value:** `application/json`
+   - **Save** butonuna tıklayın
+
+4. **Body ayarları (ÖNEMLİ):**
+   - **Body** tab'ına gidin
+   - **raw** seçeneğini seçin
+   - Dropdown'dan **JSON** seçin
+   - Aşağıdaki body'yi yapıştırın:
+
+```json
+{
+  "tool_call_id": "test_reservation_{{$timestamp}}",
+  "tool_name": "create_reservation",
+  "arguments": {
+    "checkIn": "2024-12-20",
+    "checkOut": "2024-12-22",
+    "guests": 2,
+    "guestName": "Test Müşteri",
+    "roomType": "Standard",
+    "guestPhone": "+905551234567",
+    "specialRequests": "Late check-in"
+  }
+}
+```
+
+**Not:** 
+- `{{$timestamp}}` Postman'ın otomatik değişkeni - her request'te farklı değer oluşturur
+- Tarihleri gelecek tarih olarak ayarlayın (bugünden sonra)
+- `checkOut` tarihi `checkIn` tarihinden sonra olmalı
+- `roomType` veritabanınızdaki oda tipi adlarından biri olmalı
+
+5. **Send butonuna tıklayın!** 🎉
+
+### Adım 2: Response Kontrolü
+
+Başarılı response şöyle görünür:
+
+```json
+{
+  "result": "{\"success\":true,\"confirmationCode\":\"ABC123\",\"reservation_id\":\"clx1234567890\",\"message\":\"Rezervasyon oluşturuldu! Onay kodunuz: ABC123. Bizi tercih ettiğiniz için teşekkürler.\"}",
+  "tool_call_id": "test_reservation_1234567890"
+}
+```
+
+**Response'u parse etmek için:**
+- `result` field'ı string formatında JSON içerir
+- JavaScript'te: `JSON.parse(response.result)`
+- Postman'de: Test script'inde parse edebilirsiniz (aşağıdaki bölüm)
+
+### Adım 3: Minimal Test (Sadece Zorunlu Alanlar)
+
+Daha basit bir test için yeni request oluşturun:
+
+**Request adı:** `Create Reservation - Minimal`
+
+**Body:**
+```json
+{
+  "tool_call_id": "minimal_reservation_{{$timestamp}}",
+  "tool_name": "create_reservation",
+  "arguments": {
+    "checkIn": "2024-12-20",
+    "checkOut": "2024-12-22",
+    "guests": 2,
+    "guestName": "Test Müşteri",
+    "roomType": "Standard"
+  }
+}
+```
+
+Bu da çalışmalı! ✅
+
+### Adım 4: Test Script'i (Opsiyonel)
+
+Response'u kontrol etmek için:
+```javascript
+pm.test("Status code is 200", function () {
+    pm.response.to.have.status(200);
+});
+
+pm.test("Response has result and tool_call_id", function () {
+    var jsonData = pm.response.json();
+    pm.expect(jsonData).to.have.property('result');
+    pm.expect(jsonData).to.have.property('tool_call_id');
+});
+
+pm.test("Reservation created successfully", function () {
+    var jsonData = pm.response.json();
+    var result = JSON.parse(jsonData.result);
+    
+    if (result.error) {
+        console.log("Error:", result.message);
+    } else {
+        console.log("Success:", result.message);
+        pm.expect(result).to.have.property('success', true);
+        pm.expect(result).to.have.property('confirmationCode');
+        pm.expect(result.confirmationCode).to.be.a('string');
+    }
+});
+```
+
+## 📊 Test Sonuçlarını Kontrol Etme
+
+### Veritabanında Oluşturulan Rezervasyonu Görüntüleme
+
+```sql
+-- Son oluşturulan rezervasyonları görüntüle
+SELECT 
+  r.id as reservation_id,
+  r."guestName",
+  r."checkIn",
+  r."checkOut",
+  r."numberOfGuests",
+  r."roomType",
+  r."confirmationCode",
+  r.status,
+  r."createdAt",
+  c."retellCallId" as call_id
+FROM "Reservation" r
+LEFT JOIN "Call" c ON r."callId" = c.id
+ORDER BY r."createdAt" DESC
+LIMIT 5;
+
+-- Test call'larını görüntüle (test_ ile başlayanlar)
+SELECT 
+  id,
+  "retellCallId",
+  status,
+  "createdAt"
+FROM "Call"
+WHERE "retellCallId" LIKE 'test_%'
+ORDER BY "createdAt" DESC
+LIMIT 10;
+```
+
+## ❌ Yaygın Hatalar ve Çözümleri (create_reservation)
+
+### Hata: "Room type not found"
+**Sebep:** Veritabanında belirtilen oda tipi bulunamadı
+**Çözüm:** 
+- `roomType` parametresinin doğru yazıldığından emin olun
+- Admin panel'den oda tiplerini kontrol edin
+- Oda tipinin aktif (`isActive: true`) olduğundan emin olun
+- Oda tipi adı büyük/küçük harf duyarlı değildir (case-insensitive)
+
+### Hata: "Invalid date format"
+**Sebep:** Tarih formatı yanlış
+**Çözüm:** 
+- Tarihler mutlaka `YYYY-MM-DD` formatında olmalı (örn: `2024-12-20`)
+- `checkIn` ve `checkOut` her ikisi de bu formatta olmalı
+
+### Hata: "Check-in tarihi bugünden önce olamaz"
+**Sebep:** Check-in tarihi geçmiş bir tarih
+**Çözüm:** 
+- `checkIn` tarihini bugünden sonra bir tarih olarak ayarlayın
+
+### Hata: "Check-out tarihi check-in tarihinden sonra olmalıdır"
+**Sebep:** Check-out tarihi check-in tarihinden önce veya aynı
+**Çözüm:** 
+- `checkOut` tarihini `checkIn` tarihinden sonra bir tarih olarak ayarlayın
+
+### Hata: "Tool 'create_reservation' not found"
+**Sebep:** Bulunan bot'ta `create_reservation` tool'u tanımlı değil
+**Çözüm:** 
+- ✅ Kod artık otomatik olarak built-in tool'ları (`create_reservation`) inject ediyor
+- Eğer hala hata alıyorsanız, bot'un `customerType: "HOTEL"` olduğundan emin olun
+- Bot'u güncelleyin (herhangi bir field'ı değiştirip kaydedin)
+
+### Hata: "No bot found in system"
+**Sebep:** Veritabanında hiç hotel bot'u yok
+**Çözüm:**
+- Önce bir hotel bot'u oluşturun
+- POST `/api/bots` endpoint'ini kullanın
+- Veya admin panel'den bot oluşturun
+
+### Hata: "Required fields missing"
+**Sebep:** Zorunlu parametrelerden biri eksik
+**Çözüm:**
+- `checkIn`, `checkOut`, `guests`, `guestName`, ve `roomType` parametrelerinin hepsinin gönderildiğinden emin olun
+
+## 📅 Tarih Formatı Örnekleri
+
+Doğru tarih formatları:
+```json
+"checkIn": "2024-12-20"  ✅
+"checkOut": "2024-12-22" ✅
+```
+
+Yanlış tarih formatları:
+```json
+"checkIn": "20-12-2024"  ❌ (DD-MM-YYYY)
+"checkOut": "12/20/2024" ❌ (MM/DD/YYYY)
+"checkIn": "2024-12-20T00:00:00Z" ❌ (ISO format)
+```
+
+## 🏨 Oda Tipi Örnekleri
+
+Oda tipi adları veritabanınızdaki `RoomType` tablosundaki `name` field'ına göre eşleşmelidir. Örnekler:
+
+```json
+"roomType": "Standard"   ✅
+"roomType": "Deluxe"     ✅
+"roomType": "Suite"      ✅
+"roomType": "standard"   ✅ (büyük/küçük harf duyarlı değil)
+"roomType": "DELUXE"     ✅ (büyük/küçük harf duyarlı değil)
+```
+
+## 🎓 create_reservation Test Senaryoları Özeti
+
+| Senaryo | Call ID Gerekli? | Agent ID Gerekli? | Kullanım Durumu |
+|---------|------------------|-------------------|-----------------|
+| Senaryo 1 | ❌ Hayır | ❌ Hayır | ⭐ **EN KOLAY - ÖNERİLEN** |
+| Senaryo 2 | ❌ Hayır | ✅ Evet | Belirli hotel bot kullanmak istiyorsanız |
+| Senaryo 3 | ✅ Evet | ✅ Evet | Gerçek call'a bağlı rezervasyon |
+
+**Tavsiye:** Her zaman Senaryo 1'i kullanın! En basit ve en hızlı yöntem.
+

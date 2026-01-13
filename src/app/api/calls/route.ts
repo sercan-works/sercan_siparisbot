@@ -26,7 +26,10 @@ export async function GET(req: NextRequest) {
         organizationId,
         ...(botId && { botId }),
         ...(role === "CUSTOMER" && {
-          initiatedById: userId
+          OR: [
+            { initiatedById: userId },
+            { bot: { assignments: { some: { userId } } } }
+          ]
         })
       },
       include: {
@@ -44,7 +47,10 @@ export async function GET(req: NextRequest) {
         organizationId,
         ...(botId && { botId }),
         ...(role === "CUSTOMER" && {
-          initiatedById: userId
+          OR: [
+            { initiatedById: userId },
+            { bot: { assignments: { some: { userId } } } }
+          ]
         })
       }
     })
