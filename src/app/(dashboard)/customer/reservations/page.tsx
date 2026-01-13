@@ -71,7 +71,7 @@ export default async function ReservationsPage() {
 
     const reservations = await getReservations()
 
-    const upcomingCount = reservations.filter((r) => {
+    const upcomingCount = reservations.filter((r: any) => {
         const checkIn = new Date(r.checkIn || "")
         checkIn.setHours(0, 0, 0, 0)
         const today = new Date()
