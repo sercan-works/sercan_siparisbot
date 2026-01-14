@@ -1048,6 +1048,7 @@ async function executeBuiltInTool(
             checkIn: checkInDate,
             checkOut: checkOutDate,
             numberOfGuests: args.guests,
+            numberOfChildren: args.numberOfChildren || null,
             numberOfRooms: 1, // Default to 1 room
             roomTypeId: null, // No room type ID lookup - info comes from prompt
             roomType: args.roomType, // Store room type name as string (from prompt)

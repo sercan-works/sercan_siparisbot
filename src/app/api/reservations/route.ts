@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
                 checkIn: true,
                 checkOut: true,
                 numberOfGuests: true,
+                numberOfChildren: true,
                 numberOfRooms: true,
                 roomType: true,
                 roomTypeId: true,

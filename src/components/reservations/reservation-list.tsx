@@ -20,6 +20,7 @@ interface Reservation {
     checkIn: string
     checkOut: string
     numberOfGuests: number
+    numberOfChildren?: number | null
     numberOfRooms?: number
     roomType: string | null
     status: string
@@ -221,6 +222,7 @@ export default function ReservationList({ initialReservations }: ReservationList
                                         </div>
                                         <div className="text-sm text-gray-600 ml-6">
                                             {res.numberOfGuests} {res.numberOfGuests === 1 ? "Kişi" : "Kişi"}
+                                            {res.numberOfChildren && res.numberOfChildren > 0 && ` (${res.numberOfChildren} ${res.numberOfChildren === 1 ? "Çocuk" : "Çocuk"})`}
                                             {res.numberOfRooms && res.numberOfRooms > 1 && ` • ${res.numberOfRooms} Oda`}
                                         </div>
                                     </div>

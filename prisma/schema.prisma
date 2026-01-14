@@ -528,6 +528,7 @@ model Reservation {
   roomType        String?           // Fallback if no RoomType defined
   numberOfRooms   Int               @default(1)
   numberOfGuests  Int               @default(1)
+  numberOfChildren Int?             // Number of children if specified separately
   specialRequests String?           @db.Text
 
   // Pricing

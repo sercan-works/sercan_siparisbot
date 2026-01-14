@@ -88,6 +88,14 @@ Content-Type: application/json
     "specialRequests": {
       "type": "string",
       "description": "Any special requests (e.g. 'Late check-in', 'High floor'). Optional."
+    },
+    "totalPrice": {
+      "type": "number",
+      "description": "Total price for the reservation in local currency (e.g., 3000 for 3000 TL). Optional."
+    },
+    "numberOfChildren": {
+      "type": "number",
+      "description": "Number of children if specified separately. Optional."
     }
   },
   "required": [
