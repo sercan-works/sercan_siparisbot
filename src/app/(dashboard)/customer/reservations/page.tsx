@@ -68,13 +68,15 @@ async function getReservations() {
         }
     })
 
-    // Convert dates to strings for serialization
+    // Convert dates to strings for serialization and ensure totalPrice is a number
     return reservations.map((r: any) => ({
         ...r,
         checkIn: r.checkIn?.toISOString(),
         checkOut: r.checkOut?.toISOString(),
         createdAt: r.createdAt?.toISOString(),
         confirmedAt: r.confirmedAt?.toISOString() || null,
+        // Ensure totalPrice is a number (Prisma Float can sometimes be serialized as string)
+        totalPrice: r.totalPrice ? (typeof r.totalPrice === 'string' ? parseFloat(r.totalPrice) : Number(r.totalPrice)) : null,
     }))
 }
 

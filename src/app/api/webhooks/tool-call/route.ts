@@ -958,8 +958,28 @@ async function executeBuiltInTool(
             totalPrice = args.totalPrice
           } else {
             // Remove currency symbols and parse
-            const cleaned = String(args.totalPrice).replace(/[^0-9.]/g, "")
+            // Handle Turkish number format: "12.500" = 12500 (dot is thousands separator)
+            let cleaned = String(args.totalPrice).replace(/[^0-9.,]/g, "")
+            // If there's a comma, it's likely decimal separator (e.g., "12,50")
+            // If there's only dots, they're thousands separators (e.g., "12.500")
+            if (cleaned.includes(',')) {
+              // Decimal separator is comma: "12,50" = 12.50
+              cleaned = cleaned.replace(/\./g, '').replace(',', '.')
+            } else if (cleaned.includes('.')) {
+              // Only dots: could be thousands separator or decimal
+              // If there's only one dot at the end or near end, it might be decimal
+              // Otherwise, remove all dots (thousands separator)
+              const parts = cleaned.split('.')
+              if (parts.length === 2 && parts[1].length <= 2) {
+                // Likely decimal: "12.50" = 12.50
+                cleaned = cleaned.replace('.', '')
+              } else {
+                // Thousands separator: "12.500" = 12500
+                cleaned = cleaned.replace(/\./g, '')
+              }
+            }
             totalPrice = parseFloat(cleaned) || null
+            console.log("[create_reservation] Parsed totalPrice:", args.totalPrice, "->", totalPrice)
           }
         } else if (args.adultPrice !== undefined || args.childPrice !== undefined) {
           // Calculate from adultPrice and childPrice

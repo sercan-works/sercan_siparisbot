@@ -74,7 +74,16 @@ export async function GET(req: NextRequest) {
             }
         })
 
-        return NextResponse.json({ reservations })
+        // Ensure totalPrice is a number (Prisma Float can sometimes be serialized as string)
+        const formattedReservations = reservations.map((r: any) => ({
+            ...r,
+            checkIn: r.checkIn?.toISOString(),
+            checkOut: r.checkOut?.toISOString(),
+            createdAt: r.createdAt?.toISOString(),
+            totalPrice: r.totalPrice ? (typeof r.totalPrice === 'string' ? parseFloat(r.totalPrice) : Number(r.totalPrice)) : null,
+        }))
+
+        return NextResponse.json({ reservations: formattedReservations })
 
     } catch (error) {
         console.error("Error fetching reservations:", error)

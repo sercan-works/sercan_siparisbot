@@ -132,6 +132,9 @@ export default function ReservationList({ initialReservations }: ReservationList
         const checkOutDate = new Date(res.checkOut)
         const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24))
         
+        // Ensure totalPrice is a number
+        const totalPrice = typeof res.totalPrice === 'string' ? parseFloat(res.totalPrice) : (res.totalPrice || 0)
+        
         let message = `Rezervasyon Bilgileri: Müşteri Adı: ${res.guestName}  Rezervasyon Detayları: • Giriş: ${format(checkInDate, "dd MMMM yyyy", { locale: tr })} • Çıkış: ${format(checkOutDate, "dd MMMM yyyy", { locale: tr })} • Gece Sayısı: ${nights} gece • Oda Tipi: ${res.roomType || "Belirtilmemiş"} • Kişi Sayısı: ${res.numberOfGuests} kişi`
         
         if (res.numberOfRooms && res.numberOfRooms > 1) {
@@ -156,6 +159,9 @@ export default function ReservationList({ initialReservations }: ReservationList
         const checkInDate = new Date(res.checkIn)
         const checkOutDate = new Date(res.checkOut)
         const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24))
+        
+        // Ensure totalPrice is a number (handle string conversion from JSON)
+        const totalPrice = typeof res.totalPrice === 'string' ? parseFloat(res.totalPrice) : (res.totalPrice || 0)
 
         return (
             <Card key={res.id} className={`overflow-hidden hover:shadow-lg transition-all duration-200 border-l-4 ${
@@ -228,7 +234,7 @@ export default function ReservationList({ initialReservations }: ReservationList
 
                                 {/* Price Info */}
                                 <div className="pt-2 border-t border-gray-100">
-                                    {res.totalPrice && res.totalPrice > 0 ? (
+                                    {totalPrice && totalPrice > 0 ? (
                                         <div className="flex items-center justify-between bg-green-50 px-4 py-3 rounded-lg border border-green-100">
                                             <div className="flex items-center gap-2 text-sm text-gray-700">
                                                 <DollarSign className="w-4 h-4 text-green-600" />
@@ -236,14 +242,14 @@ export default function ReservationList({ initialReservations }: ReservationList
                                             </div>
                                             <div className="text-right">
                                                 <div className="text-lg font-bold text-green-700">
-                                                    {res.totalPrice.toLocaleString('tr-TR', { 
+                                                    {totalPrice.toLocaleString('tr-TR', { 
                                                         minimumFractionDigits: 2, 
                                                         maximumFractionDigits: 2 
                                                     })} ₺
                                                 </div>
                                                 {nights > 0 && (
                                                     <div className="text-xs text-gray-500 mt-1">
-                                                        {Math.round(res.totalPrice / nights).toLocaleString('tr-TR')} ₺ / gece
+                                                        {Math.round(totalPrice / nights).toLocaleString('tr-TR')} ₺ / gece
                                                     </div>
                                                 )}
                                             </div>
