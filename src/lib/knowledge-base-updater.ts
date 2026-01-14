@@ -67,20 +67,25 @@ export async function updateKnowledgeBaseRoomCount(
           continue
         }
 
+        // Log all room types in KB for debugging
+        console.log(`[KB Update] KB ${kb.id} has ${hotelData.roomTypes.length} room types:`, hotelData.roomTypes.map((rt: any) => ({ name: rt.name, adet: rt.adet })))
+
         // Find matching room type (case-insensitive name match)
         let foundRoomType = false
         for (const roomType of hotelData.roomTypes) {
           if (roomType.name && roomType.name.toLowerCase() === roomTypeName.toLowerCase()) {
             // Update the adet (count) field
+            const oldAdet = roomType.adet
             roomType.adet = String(newCount)
             foundRoomType = true
-            console.log(`[KB Update] Updated room type "${roomType.name}" count to ${newCount} in KB ${kb.id}`)
+            console.log(`[KB Update] Updated room type "${roomType.name}" count from ${oldAdet} to ${newCount} in KB ${kb.id}`)
             break
           }
         }
 
         if (!foundRoomType) {
-          console.log(`[KB Update] Room type "${roomTypeName}" not found in KB ${kb.id}, skipping`)
+          const kbRoomTypeNames = hotelData.roomTypes.map((rt: any) => rt.name).filter(Boolean)
+          console.log(`[KB Update] Room type "${roomTypeName}" not found in KB ${kb.id}. Available room types:`, kbRoomTypeNames)
           continue
         }
 

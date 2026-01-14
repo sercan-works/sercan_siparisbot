@@ -1102,15 +1102,24 @@ async function executeBuiltInTool(
         // Update knowledge base room count asynchronously (don't wait for it)
         if (foundRoomType && roomTypeId) {
           const newTotalRooms = Math.max(0, foundRoomType.totalRooms - 1)
+          console.log("[create_reservation] Calling KB update function:", {
+            organizationId,
+            customerId: assignedUser.id,
+            roomTypeName: args.roomType, // Use args.roomType (from Retell) to match KB
+            newCount: newTotalRooms
+          })
           updateKnowledgeBaseRoomCount(
             organizationId,
             assignedUser.id,
-            args.roomType,
+            args.roomType, // Use args.roomType because KB room type names match Retell's roomType value
             newTotalRooms
           ).catch((err) => {
             console.error("[create_reservation] Failed to update knowledge base:", err)
+            console.error("[create_reservation] KB update error details:", err.message, err.stack)
             // Don't fail reservation creation if KB update fails
           })
+        } else {
+          console.log("[create_reservation] Skipping KB update - room type not found:", { foundRoomType: !!foundRoomType, roomTypeId })
         }
 
         return {
