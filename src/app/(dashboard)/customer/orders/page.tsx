@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../../components
 import { Input } from "../../../../components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../../components/ui/select"
 import { Bell, Check, X, Clock, ChefHat, Eye, Settings, Search, RefreshCw, Package, PackageCheck, MessageCircle } from "lucide-react"
+import { getWhatsAppTemplate, replaceOrderTags } from "@/lib/whatsapp-templates"
+import WhatsAppTemplateManager from "@/components/whatsapp/whatsapp-template-manager"
 
 export const dynamic = "force-dynamic"
 
@@ -74,6 +76,7 @@ export default function LiveOrdersPage() {
     showDesktopNotifications: true
   })
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [templateManagerOpen, setTemplateManagerOpen] = useState(false)
 
   // Load settings from localStorage
   useEffect(() => {
@@ -290,24 +293,21 @@ export default function LiveOrdersPage() {
   }
 
   // WhatsApp mesajı oluştur
-  const createWhatsAppMessage = (order: Order) => {
-    let message = `Sipariş Bilgileri: Müşteri Adı: ${order.customerName}  Sipariş Detayları: ${order.items}`
+  const createWhatsAppMessage = async (order: Order, templateType: "confirmation" | "information" | "cancellation" = "information") => {
+    const template = await getWhatsAppTemplate("RESTAURANT", templateType)
     
-    if (order.deliveryAddress) {
-      message += ` • Teslimat Adresi: ${order.deliveryAddress}`
+    const orderData = {
+      customerName: order.customerName,
+      customerPhone: order.customerPhone,
+      items: order.items,
+      deliveryAddress: order.deliveryAddress,
+      notes: order.notes,
+      totalAmount: order.totalAmount,
+      orderCode: `#${order.id.slice(-6).toUpperCase()}`,
+      orderDate: order.createdAt
     }
     
-    if (order.notes) {
-      message += ` • Notlar: ${order.notes}`
-    }
-    
-    if (order.totalAmount) {
-      message += ` • Toplam Tutar: ${order.totalAmount.toFixed(2)} TL`
-    }
-    
-    message += ` . Sipariş Kodu: #${order.id.slice(-6).toUpperCase()} . İyi günler dileriz.`
-    
-    return message
+    return replaceOrderTags(template, orderData)
   }
 
   // WhatsApp URL oluştur
@@ -341,6 +341,13 @@ export default function LiveOrdersPage() {
       {/* Hidden audio element for notification sound */}
       <audio ref={audioRef} src="/notification.mp3" preload="auto" />
 
+      {/* WhatsApp Template Manager */}
+      <WhatsAppTemplateManager
+        isOpen={templateManagerOpen}
+        onClose={() => setTemplateManagerOpen(false)}
+        customerType="RESTAURANT"
+      />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
@@ -354,6 +361,15 @@ export default function LiveOrdersPage() {
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setTemplateManagerOpen(true)}
+            className="flex items-center gap-2"
+          >
+            <Settings className="h-4 w-4" />
+            WhatsApp Şablonları
+          </Button>
           <div className="flex items-center gap-2">
             <Select value={refreshInterval.toString()} onValueChange={(v) => setRefreshInterval(Number(v))}>
               <SelectTrigger className="w-[140px]">
@@ -538,8 +554,9 @@ export default function LiveOrdersPage() {
                             <Button
                               variant="outline"
                               className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-                              onClick={() => {
-                                const message = createWhatsAppMessage(order)
+                              onClick={async () => {
+                                const templateType = order.status === "CANCELLED" ? "cancellation" : "information"
+                                const message = await createWhatsAppMessage(order, templateType)
                                 const url = getWhatsAppUrl(order.customerPhone!, message)
                                 window.open(url, '_blank')
                               }}
@@ -684,8 +701,9 @@ export default function LiveOrdersPage() {
                             <Button
                               variant="outline"
                               className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-                              onClick={() => {
-                                const message = createWhatsAppMessage(order)
+                              onClick={async () => {
+                                const templateType = order.status === "CANCELLED" ? "cancellation" : "information"
+                                const message = await createWhatsAppMessage(order, templateType)
                                 const url = getWhatsAppUrl(order.customerPhone!, message)
                                 window.open(url, '_blank')
                               }}
@@ -833,8 +851,9 @@ export default function LiveOrdersPage() {
                             <Button
                               variant="outline"
                               className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-                              onClick={() => {
-                                const message = createWhatsAppMessage(order)
+                              onClick={async () => {
+                                const templateType = order.status === "CANCELLED" ? "cancellation" : "information"
+                                const message = await createWhatsAppMessage(order, templateType)
                                 const url = getWhatsAppUrl(order.customerPhone!, message)
                                 window.open(url, '_blank')
                               }}

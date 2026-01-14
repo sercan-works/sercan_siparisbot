@@ -8,7 +8,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
-import { Calendar, Phone, User, Home, Clock, Search, CalendarCheck, CalendarX, X, RotateCcw, DollarSign, MessageCircle } from "lucide-react"
+import { Calendar, Phone, User, Home, Clock, Search, CalendarCheck, CalendarX, X, RotateCcw, DollarSign, MessageCircle, Settings } from "lucide-react"
+import { getWhatsAppTemplate, replaceReservationTags } from "@/lib/whatsapp-templates"
+import WhatsAppTemplateManager from "@/components/whatsapp/whatsapp-template-manager"
 
 interface Reservation {
     id: string
@@ -41,6 +43,7 @@ export default function ReservationList({ initialReservations }: ReservationList
     const [reservations, setReservations] = useState<Reservation[]>(initialReservations)
     const [searchQuery, setSearchQuery] = useState("")
     const [activeTab, setActiveTab] = useState<"upcoming" | "past" | "cancelled">("upcoming")
+    const [templateManagerOpen, setTemplateManagerOpen] = useState(false)
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -127,23 +130,23 @@ export default function ReservationList({ initialReservations }: ReservationList
     const cancelledCount = reservations.filter((res) => res.status === "CANCELLED").length
 
     // WhatsApp mesajı oluştur
-    const createWhatsAppMessage = (res: Reservation) => {
-        const checkInDate = new Date(res.checkIn)
-        const checkOutDate = new Date(res.checkOut)
-        const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24))
+    const createWhatsAppMessage = async (res: Reservation, templateType: "confirmation" | "information" | "cancellation" = "information") => {
+        const template = await getWhatsAppTemplate("HOTEL", templateType)
         
-        // Ensure totalPrice is a number
-        const totalPrice = typeof res.totalPrice === 'string' ? parseFloat(res.totalPrice) : (res.totalPrice || 0)
-        
-        let message = `Rezervasyon Bilgileri: Müşteri Adı: ${res.guestName}  Rezervasyon Detayları: • Giriş: ${format(checkInDate, "dd MMMM yyyy", { locale: tr })} • Çıkış: ${format(checkOutDate, "dd MMMM yyyy", { locale: tr })} • Gece Sayısı: ${nights} gece • Oda Tipi: ${res.roomType || "Belirtilmemiş"} • Kişi Sayısı: ${res.numberOfGuests} kişi`
-        
-        if (res.numberOfRooms && res.numberOfRooms > 1) {
-            message += ` • Oda Sayısı: ${res.numberOfRooms} oda`
+        const reservationData = {
+            guestName: res.guestName,
+            guestPhone: res.guestPhone,
+            checkIn: res.checkIn,
+            checkOut: res.checkOut,
+            numberOfGuests: res.numberOfGuests,
+            numberOfRooms: res.numberOfRooms || 1,
+            roomType: res.roomType,
+            totalPrice: res.totalPrice,
+            specialRequests: res.specialRequests,
+            reservationCode: `#${res.id.slice(-6).toUpperCase()}`
         }
         
-        message += ` . Rezervasyon Kodu: #${res.id.slice(-6).toUpperCase()} . İyi günler dileriz.`
-        
-        return message
+        return replaceReservationTags(template, reservationData)
     }
 
     // WhatsApp URL oluştur
@@ -288,8 +291,9 @@ export default function ReservationList({ initialReservations }: ReservationList
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                onClick={() => {
-                                                    const message = createWhatsAppMessage(res)
+                                                onClick={async () => {
+                                                    const templateType = res.status === "CANCELLED" ? "cancellation" : "information"
+                                                    const message = await createWhatsAppMessage(res, templateType)
                                                     const url = getWhatsAppUrl(res.guestPhone!, message)
                                                     window.open(url, '_blank')
                                                 }}
@@ -335,6 +339,26 @@ export default function ReservationList({ initialReservations }: ReservationList
 
     return (
         <div className="space-y-6">
+            {/* Template Manager Button */}
+            <div className="flex justify-end">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTemplateManagerOpen(true)}
+                    className="flex items-center gap-2"
+                >
+                    <Settings className="w-4 h-4" />
+                    WhatsApp Şablonlarını Yönet
+                </Button>
+            </div>
+
+            {/* WhatsApp Template Manager */}
+            <WhatsAppTemplateManager
+                isOpen={templateManagerOpen}
+                onClose={() => setTemplateManagerOpen(false)}
+                customerType="HOTEL"
+            />
+
             {/* Search Bar */}
             <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />

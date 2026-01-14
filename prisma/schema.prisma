@@ -27,6 +27,9 @@ model Organization {
   retellApiKey    String?  // Encrypted Retell API key
   retellWebhookSecret String? // Retell webhook secret
 
+  // WhatsApp Templates
+  whatsappTemplates Json? // WhatsApp message templates for reservations and orders
+
   // Subscription & Quota
   subscriptionPlan      SubscriptionPlan @default(FREE)
   monthlyCallMinutes    Int              @default(0)     // Used minutes this period
