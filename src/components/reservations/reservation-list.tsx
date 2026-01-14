@@ -143,6 +143,7 @@ export default function ReservationList({ initialReservations }: ReservationList
             checkIn: res.checkIn,
             checkOut: res.checkOut,
             numberOfGuests: res.numberOfGuests,
+            numberOfChildren: res.numberOfChildren,
             numberOfRooms: res.numberOfRooms || 1,
             roomType: res.roomType,
             totalPrice: res.totalPrice,

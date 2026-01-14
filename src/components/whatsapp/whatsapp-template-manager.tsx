@@ -39,6 +39,7 @@ const HOTEL_TAGS = [
   { tag: "{nights}", label: "Gece Sayısı", description: "Kalınacak gece sayısı" },
   { tag: "{roomType}", label: "Oda Tipi", description: "Rezervasyon yapılan oda tipi" },
   { tag: "{numberOfGuests}", label: "Kişi Sayısı", description: "Toplam misafir sayısı" },
+  { tag: "{numberOfChildren}", label: "Çocuk Sayısı", description: "Çocuk sayısı" },
   { tag: "{numberOfRooms}", label: "Oda Sayısı", description: "Rezervasyon yapılan oda sayısı" },
   { tag: "{totalPrice}", label: "Toplam Fiyat", description: "Rezervasyonun toplam fiyatı" },
   { tag: "{pricePerNight}", label: "Gece Başı Fiyat", description: "Bir gecelik fiyat" },

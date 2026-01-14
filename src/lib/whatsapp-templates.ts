@@ -8,6 +8,7 @@ interface ReservationData {
   checkIn: string | Date
   checkOut: string | Date
   numberOfGuests: number
+  numberOfChildren?: number | null
   numberOfRooms?: number
   roomType: string | null
   totalPrice?: number | null
@@ -44,6 +45,7 @@ export function replaceReservationTags(template: string, data: ReservationData):
     .replace(/{nights}/g, nights.toString())
     .replace(/{roomType}/g, data.roomType || "Belirtilmemiş")
     .replace(/{numberOfGuests}/g, data.numberOfGuests.toString())
+    .replace(/{numberOfChildren}/g, (data.numberOfChildren && data.numberOfChildren > 0) ? data.numberOfChildren.toString() : "0")
     .replace(/{numberOfRooms}/g, (data.numberOfRooms || 1).toString())
     .replace(/{totalPrice}/g, totalPrice > 0 ? totalPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "Belirtilmemiş")
     .replace(/{pricePerNight}/g, pricePerNight > 0 ? pricePerNight.toLocaleString('tr-TR') : "Belirtilmemiş")
