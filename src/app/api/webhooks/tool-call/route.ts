@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { callRetellApi } from "@/lib/retell"
+import { updateKnowledgeBaseRoomCount } from "@/lib/knowledge-base-updater"
 import crypto from "crypto"
 
 export const dynamic = "force-dynamic"
@@ -1036,32 +1037,81 @@ async function executeBuiltInTool(
           transcriptAvailable: !!(call?.transcript || body?.call?.transcript || body?.transcript)
         })
 
-        // Create reservation
-        // Similar to create_order - no database lookup for room types
-        // All room type info comes from prompt, we just store the name
-        const reservation = await prisma.reservation.create({
-          data: {
-            customerId: assignedUser.id, // Assign to bot-assigned user or HOTEL customer
-            callId: call.id,
-            guestName: args.guestName,
-            guestPhone: guestPhone || "Unknown",
-            checkIn: checkInDate,
-            checkOut: checkOutDate,
-            numberOfGuests: args.guests,
-            numberOfChildren: args.numberOfChildren || null,
-            numberOfRooms: 1, // Default to 1 room
-            roomTypeId: null, // No room type ID lookup - info comes from prompt
-            roomType: args.roomType, // Store room type name as string (from prompt)
-            status: "PENDING",
-            totalPrice: totalPrice,
-            specialRequests: args.specialRequests || null
+        // Find room type by name (case-insensitive)
+        let roomTypeId: string | null = null
+        let foundRoomType: any = null
+        
+        if (args.roomType) {
+          foundRoomType = await prisma.roomType.findFirst({
+            where: {
+              organizationId: organizationId,
+              customerId: assignedUser.id,
+              name: { contains: args.roomType, mode: "insensitive" },
+              isActive: true
+            }
+          })
+          
+          if (foundRoomType) {
+            roomTypeId = foundRoomType.id
+            console.log("[create_reservation] Found room type:", { id: roomTypeId, name: foundRoomType.name, currentTotalRooms: foundRoomType.totalRooms })
+          } else {
+            console.log("[create_reservation] Room type not found in database, will create reservation without roomTypeId:", args.roomType)
           }
+        }
+
+        // Create reservation and update room count in transaction
+        const reservation = await prisma.$transaction(async (tx) => {
+          // Create reservation
+          const newReservation = await tx.reservation.create({
+            data: {
+              customerId: assignedUser.id, // Assign to bot-assigned user or HOTEL customer
+              callId: call.id,
+              guestName: args.guestName,
+              guestPhone: guestPhone || "Unknown",
+              checkIn: checkInDate,
+              checkOut: checkOutDate,
+              numberOfGuests: args.guests,
+              numberOfChildren: args.numberOfChildren || null,
+              numberOfRooms: 1, // Default to 1 room
+              roomTypeId: roomTypeId, // Set room type ID if found
+              roomType: args.roomType, // Store room type name as string (from prompt)
+              status: "PENDING",
+              totalPrice: totalPrice,
+              specialRequests: args.specialRequests || null
+            }
+          })
+
+          // Update room count if room type was found
+          if (roomTypeId && foundRoomType) {
+            const newTotalRooms = Math.max(0, foundRoomType.totalRooms - 1)
+            await tx.roomType.update({
+              where: { id: roomTypeId },
+              data: { totalRooms: newTotalRooms }
+            })
+            console.log("[create_reservation] Updated room count:", { roomTypeId, oldCount: foundRoomType.totalRooms, newCount: newTotalRooms })
+          }
+
+          return newReservation
         })
 
         // Generate confirmation code (last 6 characters of ID, uppercase)
         const confirmationCode = reservation.id.slice(-6).toUpperCase()
 
         console.log("[create_reservation] Reservation created successfully:", reservation.id)
+
+        // Update knowledge base room count asynchronously (don't wait for it)
+        if (foundRoomType && roomTypeId) {
+          const newTotalRooms = Math.max(0, foundRoomType.totalRooms - 1)
+          updateKnowledgeBaseRoomCount(
+            organizationId,
+            assignedUser.id,
+            args.roomType,
+            newTotalRooms
+          ).catch((err) => {
+            console.error("[create_reservation] Failed to update knowledge base:", err)
+            // Don't fail reservation creation if KB update fails
+          })
+        }
 
         return {
           success: true,

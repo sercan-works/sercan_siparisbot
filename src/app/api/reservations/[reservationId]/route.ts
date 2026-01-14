@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { updateKnowledgeBaseRoomCount } from "@/lib/knowledge-base-updater"
 
 export const dynamic = "force-dynamic"
 
@@ -44,6 +45,13 @@ export async function PATCH(
             organizationId: organizationId
           }
         })
+      },
+      include: {
+        customer: {
+          select: {
+            organizationId: true
+          }
+        }
       }
     })
 
@@ -51,26 +59,88 @@ export async function PATCH(
       return NextResponse.json({ error: "Reservation not found" }, { status: 404 })
     }
 
-    const updatedReservation = await prisma.reservation.update({
-      where: { id: reservationId },
-      data: {
-        status,
-        ...(status === "CONFIRMED" && { confirmedAt: new Date() })
-      },
-      include: {
-        call: {
-          select: {
-            id: true,
-            bot: {
-              select: {
-                id: true,
-                name: true
+    const oldStatus = reservation.status
+    const newStatus = status
+
+    // Update reservation and room count in transaction
+    const updatedReservation = await prisma.$transaction(async (tx) => {
+      // Update reservation status
+      const updated = await tx.reservation.update({
+        where: { id: reservationId },
+        data: {
+          status,
+          ...(status === "CONFIRMED" && { confirmedAt: new Date() })
+        },
+        include: {
+          call: {
+            select: {
+              id: true,
+              bot: {
+                select: {
+                  id: true,
+                  name: true
+                }
               }
             }
           }
         }
+      })
+
+      // Update room count if roomTypeId exists
+      if (reservation.roomTypeId) {
+        // Get current room type
+        const roomType = await tx.roomType.findUnique({
+          where: { id: reservation.roomTypeId }
+        })
+
+        if (roomType) {
+          let newTotalRooms = roomType.totalRooms
+
+          // Status transition: PENDING/CONFIRMED/CHECKED_IN/CHECKED_OUT -> CANCELLED: Increase count
+          if (oldStatus !== "CANCELLED" && newStatus === "CANCELLED") {
+            newTotalRooms = roomType.totalRooms + 1
+            await tx.roomType.update({
+              where: { id: reservation.roomTypeId },
+              data: { totalRooms: newTotalRooms }
+            })
+            console.log("[reservation status] Increased room count:", { roomTypeId: reservation.roomTypeId, oldCount: roomType.totalRooms, newCount: newTotalRooms })
+          }
+          // Status transition: CANCELLED -> PENDING/CONFIRMED/CHECKED_IN/CHECKED_OUT: Decrease count
+          else if (oldStatus === "CANCELLED" && newStatus !== "CANCELLED") {
+            newTotalRooms = Math.max(0, roomType.totalRooms - 1)
+            await tx.roomType.update({
+              where: { id: reservation.roomTypeId },
+              data: { totalRooms: newTotalRooms }
+            })
+            console.log("[reservation status] Decreased room count:", { roomTypeId: reservation.roomTypeId, oldCount: roomType.totalRooms, newCount: newTotalRooms })
+          }
+        }
       }
+
+      return updated
     })
+
+    // Update knowledge base room count asynchronously if status changed and roomTypeId exists
+    if (reservation.roomTypeId && reservation.roomType && ((oldStatus !== "CANCELLED" && newStatus === "CANCELLED") || (oldStatus === "CANCELLED" && newStatus !== "CANCELLED"))) {
+      // Get updated room type count after transaction
+      const roomType = await prisma.roomType.findUnique({
+        where: { id: reservation.roomTypeId },
+        select: { totalRooms: true }
+      })
+
+      if (roomType) {
+        const customerOrgId = reservation.customer?.organizationId || organizationId
+        updateKnowledgeBaseRoomCount(
+          customerOrgId,
+          reservation.customerId,
+          reservation.roomType,
+          roomType.totalRooms
+        ).catch((err) => {
+          console.error("[reservation status] Failed to update knowledge base:", err)
+          // Don't fail status update if KB update fails
+        })
+      }
+    }
 
     return NextResponse.json({ reservation: updatedReservation })
   } catch (error) {
