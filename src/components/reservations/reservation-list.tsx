@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
-import { Calendar, Phone, User, Home, Clock, Search, CalendarCheck, CalendarX, X, RotateCcw, DollarSign } from "lucide-react"
+import { Calendar, Phone, User, Home, Clock, Search, CalendarCheck, CalendarX, X, RotateCcw, DollarSign, MessageCircle } from "lucide-react"
 
 interface Reservation {
     id: string
@@ -125,6 +125,50 @@ export default function ReservationList({ initialReservations }: ReservationList
     }).length
 
     const cancelledCount = reservations.filter((res) => res.status === "CANCELLED").length
+
+    // WhatsApp mesajı oluştur
+    const createWhatsAppMessage = (res: Reservation) => {
+        const checkInDate = new Date(res.checkIn)
+        const checkOutDate = new Date(res.checkOut)
+        const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24))
+        
+        let message = `🏨 *Rezervasyon Bilgileri*\n\n`
+        message += `*Müşteri Adı:* ${res.guestName}\n`
+        if (res.guestPhone) {
+            message += `*Telefon:* ${res.guestPhone}\n`
+        }
+        message += `\n*Rezervasyon Detayları:*\n`
+        message += `• Giriş: ${format(checkInDate, "dd MMMM yyyy", { locale: tr })}\n`
+        message += `• Çıkış: ${format(checkOutDate, "dd MMMM yyyy", { locale: tr })}\n`
+        message += `• Gece Sayısı: ${nights} gece\n`
+        message += `• Oda Tipi: ${res.roomType || "Belirtilmemiş"}\n`
+        message += `• Kişi Sayısı: ${res.numberOfGuests} kişi\n`
+        if (res.numberOfRooms && res.numberOfRooms > 1) {
+            message += `• Oda Sayısı: ${res.numberOfRooms} oda\n`
+        }
+        if (res.totalPrice && res.totalPrice > 0) {
+            message += `• Toplam Fiyat: ${res.totalPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺\n`
+            if (nights > 0) {
+                message += `• Gece Başı: ${Math.round(res.totalPrice / nights).toLocaleString('tr-TR')} ₺\n`
+            }
+        }
+        if (res.specialRequests) {
+            message += `\n*Özel İstekler:*\n${res.specialRequests}\n`
+        }
+        message += `\n*Rezervasyon Kodu:* #${res.id.slice(-6).toUpperCase()}\n`
+        message += `*Durum:* ${res.status === "PENDING" ? "Beklemede" : res.status === "CONFIRMED" ? "Onaylandı" : res.status === "CANCELLED" ? "İptal Edildi" : res.status}`
+        
+        return message
+    }
+
+    // WhatsApp URL oluştur
+    const getWhatsAppUrl = (phoneNumber: string, message: string) => {
+        // Telefon numarasını temizle (boşluklar, tireler, parantezler)
+        const cleanPhone = phoneNumber.replace(/[\s\-\(\)]/g, '')
+        // Türkiye için +90 ekle (yoksa)
+        const formattedPhone = cleanPhone.startsWith('90') ? `+${cleanPhone}` : cleanPhone.startsWith('+90') ? cleanPhone : `+90${cleanPhone}`
+        return `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`
+    }
 
     const renderReservationCard = (res: Reservation) => {
         const checkInDate = new Date(res.checkIn)
@@ -251,29 +295,46 @@ export default function ReservationList({ initialReservations }: ReservationList
 
                                 {/* Action Buttons */}
                                 <div className="pt-2 border-t border-gray-100">
-                                    <div className="flex gap-2">
-                                        {res.status !== "CANCELLED" && (
+                                    <div className="flex flex-col gap-2">
+                                        {res.guestPhone && (
                                             <Button
-                                                variant="destructive"
+                                                variant="outline"
                                                 size="sm"
-                                                onClick={() => updateReservationStatus(res.id, "CANCELLED")}
-                                                className="flex-1"
+                                                onClick={() => {
+                                                    const message = createWhatsAppMessage(res)
+                                                    const url = getWhatsAppUrl(res.guestPhone!, message)
+                                                    window.open(url, '_blank')
+                                                }}
+                                                className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
                                             >
-                                                <X className="w-4 h-4 mr-2" />
-                                                İptal Et
+                                                <MessageCircle className="w-4 h-4 mr-2" />
+                                                WhatsApp ile Gönder
                                             </Button>
                                         )}
-                                        {res.status === "CANCELLED" && (
-                                            <Button
-                                                variant="default"
-                                                size="sm"
-                                                onClick={() => updateReservationStatus(res.id, "PENDING")}
-                                                className="flex-1"
-                                            >
-                                                <RotateCcw className="w-4 h-4 mr-2" />
-                                                Tekrar Aktif Et
-                                            </Button>
-                                        )}
+                                        <div className="flex gap-2">
+                                            {res.status !== "CANCELLED" && (
+                                                <Button
+                                                    variant="destructive"
+                                                    size="sm"
+                                                    onClick={() => updateReservationStatus(res.id, "CANCELLED")}
+                                                    className="flex-1"
+                                                >
+                                                    <X className="w-4 h-4 mr-2" />
+                                                    İptal Et
+                                                </Button>
+                                            )}
+                                            {res.status === "CANCELLED" && (
+                                                <Button
+                                                    variant="default"
+                                                    size="sm"
+                                                    onClick={() => updateReservationStatus(res.id, "PENDING")}
+                                                    className="flex-1"
+                                                >
+                                                    <RotateCcw className="w-4 h-4 mr-2" />
+                                                    Tekrar Aktif Et
+                                                </Button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>

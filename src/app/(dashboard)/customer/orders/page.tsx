@@ -8,7 +8,7 @@ import { Badge } from "../../../../components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../../../components/ui/tabs"
 import { Input } from "../../../../components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../../components/ui/select"
-import { Bell, Check, X, Clock, ChefHat, Eye, Settings, Search, RefreshCw, Package, PackageCheck } from "lucide-react"
+import { Bell, Check, X, Clock, ChefHat, Eye, Settings, Search, RefreshCw, Package, PackageCheck, MessageCircle } from "lucide-react"
 
 export const dynamic = "force-dynamic"
 
@@ -289,6 +289,38 @@ export default function LiveOrdersPage() {
     return `${diffMinutes} dakika önce`
   }
 
+  // WhatsApp mesajı oluştur
+  const createWhatsAppMessage = (order: Order) => {
+    let message = `🍽️ *Sipariş Bilgileri*\n\n`
+    message += `*Müşteri Adı:* ${order.customerName}\n`
+    if (order.customerPhone) {
+      message += `*Telefon:* ${order.customerPhone}\n`
+    }
+    message += `\n*Sipariş Detayları:*\n`
+    message += `${order.items}\n`
+    if (order.deliveryAddress) {
+      message += `\n*Teslimat Adresi:*\n${order.deliveryAddress}\n`
+    }
+    if (order.notes) {
+      message += `\n*Notlar:*\n${order.notes}\n`
+    }
+    if (order.totalAmount) {
+      message += `\n*Toplam Tutar:* ${order.totalAmount.toFixed(2)} TL\n`
+    }
+    message += `\n*Sipariş Durumu:* ${order.status === "PENDING" ? "Beklemede" : order.status === "PREPARING" ? "Hazırlanıyor" : order.status === "READY" ? "Hazır" : order.status === "COMPLETED" ? "Tamamlandı" : order.status}\n`
+    message += `*Sipariş Tarihi:* ${formatDate(order.createdAt)} ${formatTime(order.createdAt)}`
+    return message
+  }
+
+  // WhatsApp URL oluştur
+  const getWhatsAppUrl = (phoneNumber: string, message: string) => {
+    // Telefon numarasını temizle (boşluklar, tireler, parantezler)
+    const cleanPhone = phoneNumber.replace(/[\s\-\(\)]/g, '')
+    // Türkiye için +90 ekle (yoksa)
+    const formattedPhone = cleanPhone.startsWith('90') ? `+${cleanPhone}` : cleanPhone.startsWith('+90') ? cleanPhone : `+90${cleanPhone}`
+    return `https://wa.me/${formattedPhone}?text=${encodeURIComponent(message)}`
+  }
+
   const pendingOrders = allOrders.filter(o => o.status === "PENDING")
   const preparingOrders = allOrders.filter(o => o.status === "PREPARING" || o.status === "READY")
   const completedOrders = allOrders.filter(o => o.status === "COMPLETED")
@@ -503,27 +535,43 @@ export default function LiveOrdersPage() {
                         )}
 
                         {/* Aksiyon Butonları */}
-                        <div className="grid grid-cols-2 gap-2 pt-2">
-                          <Button
-                            variant="outline"
-                            onClick={() => router.push(`/customer/orders/${order.id}`)}
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            Detay
-                          </Button>
-                          {order.status === "PENDING" && (
+                        <div className="space-y-2 pt-2">
+                          {order.customerPhone && (
                             <Button
-                              variant="default"
+                              variant="outline"
+                              className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
                               onClick={() => {
-                                updateOrderStatus(order.id, "PREPARING")
-                                // Switch to preparing tab after moving order
-                                setTimeout(() => setActiveTab("preparing"), 500)
+                                const message = createWhatsAppMessage(order)
+                                const url = getWhatsAppUrl(order.customerPhone!, message)
+                                window.open(url, '_blank')
                               }}
                             >
-                              <ChefHat className="h-4 w-4 mr-2" />
-                              Hazırla
+                              <MessageCircle className="h-4 w-4 mr-2" />
+                              WhatsApp ile Gönder
                             </Button>
                           )}
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => router.push(`/customer/orders/${order.id}`)}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              Detay
+                            </Button>
+                            {order.status === "PENDING" && (
+                              <Button
+                                variant="default"
+                                onClick={() => {
+                                  updateOrderStatus(order.id, "PREPARING")
+                                  // Switch to preparing tab after moving order
+                                  setTimeout(() => setActiveTab("preparing"), 500)
+                                }}
+                              >
+                                <ChefHat className="h-4 w-4 mr-2" />
+                                Hazırla
+                              </Button>
+                            )}
+                          </div>
                         </div>
 
                         {/* Transcript Link */}
@@ -633,26 +681,42 @@ export default function LiveOrdersPage() {
                         )}
 
                         {/* Aksiyon Butonları */}
-                        <div className="grid grid-cols-2 gap-2 pt-2">
-                          <Button
-                            variant="outline"
-                            onClick={() => router.push(`/customer/orders/${order.id}`)}
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            Detay
-                          </Button>
-                          {order.status === "PREPARING" && (
+                        <div className="space-y-2 pt-2">
+                          {order.customerPhone && (
                             <Button
-                              variant="default"
-                              onClick={() => updateOrderStatus(order.id, "READY")}
+                              variant="outline"
+                              className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                              onClick={() => {
+                                const message = createWhatsAppMessage(order)
+                                const url = getWhatsAppUrl(order.customerPhone!, message)
+                                window.open(url, '_blank')
+                              }}
                             >
-                              <Clock className="h-4 w-4 mr-2" />
-                              Hazır İşaretle
+                              <MessageCircle className="h-4 w-4 mr-2" />
+                              WhatsApp ile Gönder
                             </Button>
                           )}
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button
+                              variant="outline"
+                              onClick={() => router.push(`/customer/orders/${order.id}`)}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              Detay
+                            </Button>
+                            {order.status === "PREPARING" && (
+                              <Button
+                                variant="default"
+                                onClick={() => updateOrderStatus(order.id, "READY")}
+                              >
+                                <Clock className="h-4 w-4 mr-2" />
+                                Hazır İşaretle
+                              </Button>
+                            )}
+                          </div>
                           {(order.status === "PREPARING" || order.status === "READY") && (
                             <Button
-                              className="col-span-2"
+                              className="w-full"
                               variant="default"
                               onClick={() => {
                                 updateOrderStatus(order.id, "COMPLETED")
@@ -765,15 +829,31 @@ export default function LiveOrdersPage() {
                           </div>
                         )}
 
-                        {/* Detay Butonu */}
-                        <Button
-                          variant="outline"
-                          className="w-full"
-                          onClick={() => router.push(`/customer/orders/${order.id}`)}
-                        >
-                          <Eye className="h-4 w-4 mr-2" />
-                          Detayları Görüntüle
-                        </Button>
+                        {/* Aksiyon Butonları */}
+                        <div className="space-y-2">
+                          {order.customerPhone && (
+                            <Button
+                              variant="outline"
+                              className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                              onClick={() => {
+                                const message = createWhatsAppMessage(order)
+                                const url = getWhatsAppUrl(order.customerPhone!, message)
+                                window.open(url, '_blank')
+                              }}
+                            >
+                              <MessageCircle className="h-4 w-4 mr-2" />
+                              WhatsApp ile Gönder
+                            </Button>
+                          )}
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => router.push(`/customer/orders/${order.id}`)}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            Detayları Görüntüle
+                          </Button>
+                        </div>
 
                         {/* Transcript Link */}
                         {order.call.transcript && (
