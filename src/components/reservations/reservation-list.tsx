@@ -132,31 +132,13 @@ export default function ReservationList({ initialReservations }: ReservationList
         const checkOutDate = new Date(res.checkOut)
         const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24))
         
-        let message = `🏨 *Rezervasyon Bilgileri*\n\n`
-        message += `*Müşteri Adı:* ${res.guestName}\n`
-        if (res.guestPhone) {
-            message += `*Telefon:* ${res.guestPhone}\n`
-        }
-        message += `\n*Rezervasyon Detayları:*\n`
-        message += `• Giriş: ${format(checkInDate, "dd MMMM yyyy", { locale: tr })}\n`
-        message += `• Çıkış: ${format(checkOutDate, "dd MMMM yyyy", { locale: tr })}\n`
-        message += `• Gece Sayısı: ${nights} gece\n`
-        message += `• Oda Tipi: ${res.roomType || "Belirtilmemiş"}\n`
-        message += `• Kişi Sayısı: ${res.numberOfGuests} kişi\n`
+        let message = `Rezervasyon Bilgileri: Müşteri Adı: ${res.guestName}  Rezervasyon Detayları: • Giriş: ${format(checkInDate, "dd MMMM yyyy", { locale: tr })} • Çıkış: ${format(checkOutDate, "dd MMMM yyyy", { locale: tr })} • Gece Sayısı: ${nights} gece • Oda Tipi: ${res.roomType || "Belirtilmemiş"} • Kişi Sayısı: ${res.numberOfGuests} kişi`
+        
         if (res.numberOfRooms && res.numberOfRooms > 1) {
-            message += `• Oda Sayısı: ${res.numberOfRooms} oda\n`
+            message += ` • Oda Sayısı: ${res.numberOfRooms} oda`
         }
-        if (res.totalPrice && res.totalPrice > 0) {
-            message += `• Toplam Fiyat: ${res.totalPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺\n`
-            if (nights > 0) {
-                message += `• Gece Başı: ${Math.round(res.totalPrice / nights).toLocaleString('tr-TR')} ₺\n`
-            }
-        }
-        if (res.specialRequests) {
-            message += `\n*Özel İstekler:*\n${res.specialRequests}\n`
-        }
-        message += `\n*Rezervasyon Kodu:* #${res.id.slice(-6).toUpperCase()}\n`
-        message += `*Durum:* ${res.status === "PENDING" ? "Beklemede" : res.status === "CONFIRMED" ? "Onaylandı" : res.status === "CANCELLED" ? "İptal Edildi" : res.status}`
+        
+        message += ` . Rezervasyon Kodu: #${res.id.slice(-6).toUpperCase()} . İyi günler dileriz.`
         
         return message
     }

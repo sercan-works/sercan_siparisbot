@@ -291,24 +291,22 @@ export default function LiveOrdersPage() {
 
   // WhatsApp mesajı oluştur
   const createWhatsAppMessage = (order: Order) => {
-    let message = `🍽️ *Sipariş Bilgileri*\n\n`
-    message += `*Müşteri Adı:* ${order.customerName}\n`
-    if (order.customerPhone) {
-      message += `*Telefon:* ${order.customerPhone}\n`
-    }
-    message += `\n*Sipariş Detayları:*\n`
-    message += `${order.items}\n`
+    let message = `Sipariş Bilgileri: Müşteri Adı: ${order.customerName}  Sipariş Detayları: ${order.items}`
+    
     if (order.deliveryAddress) {
-      message += `\n*Teslimat Adresi:*\n${order.deliveryAddress}\n`
+      message += ` • Teslimat Adresi: ${order.deliveryAddress}`
     }
+    
     if (order.notes) {
-      message += `\n*Notlar:*\n${order.notes}\n`
+      message += ` • Notlar: ${order.notes}`
     }
+    
     if (order.totalAmount) {
-      message += `\n*Toplam Tutar:* ${order.totalAmount.toFixed(2)} TL\n`
+      message += ` • Toplam Tutar: ${order.totalAmount.toFixed(2)} TL`
     }
-    message += `\n*Sipariş Durumu:* ${order.status === "PENDING" ? "Beklemede" : order.status === "PREPARING" ? "Hazırlanıyor" : order.status === "READY" ? "Hazır" : order.status === "COMPLETED" ? "Tamamlandı" : order.status}\n`
-    message += `*Sipariş Tarihi:* ${formatDate(order.createdAt)} ${formatTime(order.createdAt)}`
+    
+    message += ` . Sipariş Kodu: #${order.id.slice(-6).toUpperCase()} . İyi günler dileriz.`
+    
     return message
   }
 
