@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Calendar, Phone, User, Home, Clock, Search, CalendarCheck, CalendarX, X, RotateCcw, DollarSign, MessageCircle, Settings } from "lucide-react"
 import { getWhatsAppTemplate, replaceReservationTags } from "@/lib/whatsapp-templates"
 import WhatsAppTemplateManager from "@/components/whatsapp/whatsapp-template-manager"
+import WhatsAppTemplateSelector from "@/components/whatsapp/whatsapp-template-selector"
 
 interface Reservation {
     id: string
@@ -44,6 +45,8 @@ export default function ReservationList({ initialReservations }: ReservationList
     const [searchQuery, setSearchQuery] = useState("")
     const [activeTab, setActiveTab] = useState<"upcoming" | "past" | "cancelled">("upcoming")
     const [templateManagerOpen, setTemplateManagerOpen] = useState(false)
+    const [templateSelectorOpen, setTemplateSelectorOpen] = useState(false)
+    const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null)
 
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -291,11 +294,9 @@ export default function ReservationList({ initialReservations }: ReservationList
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                onClick={async () => {
-                                                    const templateType = res.status === "CANCELLED" ? "cancellation" : "information"
-                                                    const message = await createWhatsAppMessage(res, templateType)
-                                                    const url = getWhatsAppUrl(res.guestPhone!, message)
-                                                    window.open(url, '_blank')
+                                                onClick={() => {
+                                                    setSelectedReservation(res)
+                                                    setTemplateSelectorOpen(true)
                                                 }}
                                                 className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
                                             >
@@ -357,6 +358,24 @@ export default function ReservationList({ initialReservations }: ReservationList
                 isOpen={templateManagerOpen}
                 onClose={() => setTemplateManagerOpen(false)}
                 customerType="HOTEL"
+            />
+
+            {/* WhatsApp Template Selector */}
+            <WhatsAppTemplateSelector
+                isOpen={templateSelectorOpen}
+                onClose={() => {
+                    setTemplateSelectorOpen(false)
+                    setSelectedReservation(null)
+                }}
+                onSelect={async (templateType) => {
+                    if (selectedReservation && selectedReservation.guestPhone) {
+                        const message = await createWhatsAppMessage(selectedReservation, templateType)
+                        const url = getWhatsAppUrl(selectedReservation.guestPhone, message)
+                        window.open(url, '_blank')
+                    }
+                }}
+                customerType="HOTEL"
+                status={selectedReservation?.status}
             />
 
             {/* Search Bar */}

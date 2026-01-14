@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Bell, Check, X, Clock, ChefHat, Eye, Settings, Search, RefreshCw, Package, PackageCheck, MessageCircle } from "lucide-react"
 import { getWhatsAppTemplate, replaceOrderTags } from "@/lib/whatsapp-templates"
 import WhatsAppTemplateManager from "@/components/whatsapp/whatsapp-template-manager"
+import WhatsAppTemplateSelector from "@/components/whatsapp/whatsapp-template-selector"
 
 export const dynamic = "force-dynamic"
 
@@ -77,6 +78,8 @@ export default function LiveOrdersPage() {
   })
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const [templateManagerOpen, setTemplateManagerOpen] = useState(false)
+  const [templateSelectorOpen, setTemplateSelectorOpen] = useState(false)
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
 
   // Load settings from localStorage
   useEffect(() => {
@@ -348,6 +351,24 @@ export default function LiveOrdersPage() {
         customerType="RESTAURANT"
       />
 
+      {/* WhatsApp Template Selector */}
+      <WhatsAppTemplateSelector
+        isOpen={templateSelectorOpen}
+        onClose={() => {
+          setTemplateSelectorOpen(false)
+          setSelectedOrder(null)
+        }}
+        onSelect={async (templateType) => {
+          if (selectedOrder && selectedOrder.customerPhone) {
+            const message = await createWhatsAppMessage(selectedOrder, templateType)
+            const url = getWhatsAppUrl(selectedOrder.customerPhone, message)
+            window.open(url, '_blank')
+          }
+        }}
+        customerType="RESTAURANT"
+        status={selectedOrder?.status}
+      />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
@@ -554,11 +575,9 @@ export default function LiveOrdersPage() {
                             <Button
                               variant="outline"
                               className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-                              onClick={async () => {
-                                const templateType = order.status === "CANCELLED" ? "cancellation" : "information"
-                                const message = await createWhatsAppMessage(order, templateType)
-                                const url = getWhatsAppUrl(order.customerPhone!, message)
-                                window.open(url, '_blank')
+                              onClick={() => {
+                                setSelectedOrder(order)
+                                setTemplateSelectorOpen(true)
                               }}
                             >
                               <MessageCircle className="h-4 w-4 mr-2" />
@@ -701,11 +720,9 @@ export default function LiveOrdersPage() {
                             <Button
                               variant="outline"
                               className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-                              onClick={async () => {
-                                const templateType = order.status === "CANCELLED" ? "cancellation" : "information"
-                                const message = await createWhatsAppMessage(order, templateType)
-                                const url = getWhatsAppUrl(order.customerPhone!, message)
-                                window.open(url, '_blank')
+                              onClick={() => {
+                                setSelectedOrder(order)
+                                setTemplateSelectorOpen(true)
                               }}
                             >
                               <MessageCircle className="h-4 w-4 mr-2" />
@@ -851,11 +868,9 @@ export default function LiveOrdersPage() {
                             <Button
                               variant="outline"
                               className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-                              onClick={async () => {
-                                const templateType = order.status === "CANCELLED" ? "cancellation" : "information"
-                                const message = await createWhatsAppMessage(order, templateType)
-                                const url = getWhatsAppUrl(order.customerPhone!, message)
-                                window.open(url, '_blank')
+                              onClick={() => {
+                                setSelectedOrder(order)
+                                setTemplateSelectorOpen(true)
                               }}
                             >
                               <MessageCircle className="h-4 w-4 mr-2" />
