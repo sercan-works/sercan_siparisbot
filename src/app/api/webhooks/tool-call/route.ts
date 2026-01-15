@@ -918,14 +918,6 @@ async function executeBuiltInTool(
               { checkIn: { lte: startDate }, checkOut: { gte: endDate } }
             ]
           },
-          include: {
-            roomType: {
-              select: {
-                id: true,
-                name: true
-              }
-            }
-          },
           orderBy: { checkIn: "asc" }
         })
 
@@ -946,6 +938,9 @@ async function executeBuiltInTool(
           },
           orderBy: { date: "asc" }
         })
+
+        // Create a map for quick room type lookup (for reservations)
+        const roomTypeMap = new Map(roomTypes.map((rt) => [rt.id, rt]))
 
         // Process room types with availability details
         const roomTypesWithDetails = await Promise.all(
@@ -982,19 +977,22 @@ async function executeBuiltInTool(
         )
 
         // Format reservations for response
-        const formattedReservations = reservations.map((r) => ({
-          id: r.id,
-          roomTypeId: r.roomTypeId,
-          roomTypeName: r.roomType?.name || "Unknown",
-          checkIn: r.checkIn.toISOString().split('T')[0],
-          checkOut: r.checkOut.toISOString().split('T')[0],
-          guests: r.numberOfGuests,
-          status: r.status,
-          guestName: r.guestName,
-          guestPhone: r.guestPhone,
-          totalPrice: r.totalPrice,
-          createdAt: r.createdAt.toISOString()
-        }))
+        const formattedReservations = reservations.map((r) => {
+          const roomType = r.roomTypeId ? roomTypeMap.get(r.roomTypeId) : null
+          return {
+            id: r.id,
+            roomTypeId: r.roomTypeId,
+            roomTypeName: roomType?.name || r.roomType || "Unknown",
+            checkIn: r.checkIn.toISOString().split('T')[0],
+            checkOut: r.checkOut.toISOString().split('T')[0],
+            guests: r.numberOfGuests,
+            status: r.status,
+            guestName: r.guestName,
+            guestPhone: r.guestPhone,
+            totalPrice: r.totalPrice,
+            createdAt: r.createdAt.toISOString()
+          }
+        })
 
         // Format blocked dates for response
         const formattedBlockedDates = blockedDates.map((b) => ({
