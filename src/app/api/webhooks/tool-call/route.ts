@@ -834,7 +834,7 @@ async function executeBuiltInTool(
       }
 
     case "check_availability":
-      // Check room availability using availability endpoint
+      // Check room availability directly (no internal fetch)
       try {
         console.log("[check_availability] Starting with args:", JSON.stringify(args, null, 2))
         
@@ -886,51 +886,125 @@ async function executeBuiltInTool(
           throw new Error("No customer found for this bot")
         }
 
-        // Call internal availability endpoint with botId for context
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-        const availabilityUrl = `${baseUrl}/api/tools/availability?botId=${call.bot.id}`
-        
-        const response = await fetch(availabilityUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-internal-call": "true"
-          },
-          body: JSON.stringify({
-            checkIn: args.checkIn,
-            checkOut: args.checkOut,
-            guests: args.guests,
-            roomType: args.roomType || undefined
+        // Helper to check availability for a specific range
+        const checkRange = async (start: Date, end: Date) => {
+          // 1. Find rooms matching guest capacity, organizationId, and customerId
+          const roomTypes = await prisma.roomType.findMany({
+            where: {
+              organizationId,
+              customerId,
+              isActive: true,
+              maxGuests: { gte: args.guests },
+              name: args.roomType ? { contains: args.roomType, mode: "insensitive" } : undefined
+            }
           })
-        })
 
-        if (!response.ok) {
-          let errorText: string
-          try {
-            const errorData = await response.json()
-            errorText = errorData.error || errorData.details || JSON.stringify(errorData)
-          } catch {
-            errorText = await response.text()
+          if (roomTypes.length === 0) return { available: false, rooms: [] }
+
+          const validRooms = []
+
+          for (const room of roomTypes) {
+            // Check blocked dates
+            const blocked = await prisma.roomAvailability.count({
+              where: {
+                roomTypeId: room.id,
+                isBlocked: true,
+                date: { gte: start, lt: end }
+              }
+            })
+            if (blocked > 0) continue
+
+            // Check reservations
+            const bookings = await prisma.reservation.count({
+              where: {
+                roomTypeId: room.id,
+                status: { in: ["CONFIRMED", "CHECKED_IN"] },
+                OR: [
+                  { checkIn: { lte: end, gte: start } },
+                  { checkOut: { lte: end, gte: start } },
+                  { checkIn: { lte: start }, checkOut: { gte: end } }
+                ]
+              }
+            })
+
+            if (room.totalRooms - bookings > 0) {
+              validRooms.push({
+                name: room.name,
+                price: room.pricePerNight,
+                count: room.totalRooms - bookings
+              })
+            }
           }
-          console.error("[check_availability] Availability endpoint error:", response.status, errorText)
-          throw new Error(`Availability check failed: ${response.status} - ${errorText}`)
+
+          return { available: validRooms.length > 0, rooms: validRooms }
         }
 
-        const availabilityData = await response.json()
-        
-        console.log("[check_availability] Availability check result:", availabilityData)
+        const startDate = new Date(args.checkIn)
+        const endDate = new Date(args.checkOut)
+
+        // Check requested dates
+        const primaryResult = await checkRange(startDate, endDate)
+
+        if (primaryResult.available) {
+          const lowestPrice = Math.min(...primaryResult.rooms.map((r: any) => r.price))
+          const message = `Evet, ${args.checkIn} girişli ${primaryResult.rooms.length} farklı oda tipimiz müsait. Fiyatlarımız gecelik ${lowestPrice} TL'den başlıyor.`
+          
+          return {
+            success: true,
+            available: true,
+            rooms: primaryResult.rooms,
+            message,
+            alternatives: [],
+            lowestPrice
+          }
+        }
+
+        // If not available, check alternatives (+/- 3 days)
+        const alternatives = []
+        for (let i = -3; i <= 3; i++) {
+          if (i === 0) continue // Skip original date
+
+          const altStart = new Date(startDate)
+          altStart.setDate(altStart.getDate() + i)
+
+          const altEnd = new Date(endDate)
+          altEnd.setDate(altEnd.getDate() + i)
+
+          // Skip past dates
+          if (altStart < new Date()) continue
+
+          const result = await checkRange(altStart, altEnd)
+          if (result.available) {
+            alternatives.push({
+              date: altStart.toISOString().split('T')[0],
+              rooms: result.rooms.map((r: any) => r.name).join(", ")
+            })
+          }
+
+          if (alternatives.length >= 3) break // Limit to 3 suggestions
+        }
+
+        let message = `Maalesef ${args.checkIn} - ${args.checkOut} tarihleri arasında istediğiniz kriterde boş odamız kalmadı.`
+
+        if (alternatives.length > 0) {
+          const altText = alternatives.map((a: any) => `${a.date} (${a.rooms})`).join(", ")
+          message += ` Ancak şu tarihlerde müsaitliğimiz var: ${altText}. Bu tarihlerden birini düşünür müsünüz?`
+        } else {
+          message += " Yakın tarihlerde de ne yazık ki doluyuz."
+        }
 
         return {
           success: true,
-          available: availabilityData.available,
-          rooms: availabilityData.rooms || [],
-          message: availabilityData.message || "",
-          alternatives: availabilityData.alternatives || [],
-          lowestPrice: availabilityData.lowestPrice || null
+          available: false,
+          rooms: [],
+          message,
+          alternatives,
+          lowestPrice: null
         }
 
       } catch (err: any) {
         console.error("[check_availability] Error:", err)
+        console.error("[check_availability] Error stack:", err.stack)
         return {
           error: true,
           message: `Müsaitlik kontrolü yapılırken bir hata oluştu: ${err.message || err}`
