@@ -37,12 +37,19 @@ export async function updateBotPromptWithPricingPrompt(
       return
     }
 
+    console.log(`[updateBotPromptWithPricingPrompt] Bot ${botId} has ${bot.knowledgeBases.length} assigned KB(s)`)
+
     // Extract pricingPrompt from all assigned KBs
     const pricingPrompts: string[] = []
 
     for (const assignment of bot.knowledgeBases) {
       const kb = assignment.knowledgeBase
-      if (!kb.texts || kb.texts.length === 0) continue
+      console.log(`[updateBotPromptWithPricingPrompt] Checking KB ${kb.id} (has ${kb.texts?.length || 0} text chunks)`)
+      
+      if (!kb.texts || kb.texts.length === 0) {
+        console.log(`[updateBotPromptWithPricingPrompt] KB ${kb.id} has no texts, skipping`)
+        continue
+      }
 
       try {
         // Parse KB JSON
@@ -50,13 +57,18 @@ export async function updateBotPromptWithPricingPrompt(
         const pricingData = hotelData.pricing
 
         if (pricingData && pricingData.pricingPrompt && pricingData.pricingPrompt.trim()) {
+          console.log(`[updateBotPromptWithPricingPrompt] Found pricingPrompt in KB ${kb.id} (length: ${pricingData.pricingPrompt.trim().length})`)
           pricingPrompts.push(pricingData.pricingPrompt.trim())
+        } else {
+          console.log(`[updateBotPromptWithPricingPrompt] No pricingPrompt found in KB ${kb.id}`)
         }
       } catch (parseError) {
         console.warn(`[updateBotPromptWithPricingPrompt] Failed to parse KB ${kb.id}:`, parseError)
         continue
       }
     }
+
+    console.log(`[updateBotPromptWithPricingPrompt] Found ${pricingPrompts.length} pricingPrompt(s)`)
 
     // If no pricingPrompt found, remove existing block if any
     if (pricingPrompts.length === 0) {

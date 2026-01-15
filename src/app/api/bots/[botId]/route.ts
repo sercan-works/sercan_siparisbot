@@ -265,8 +265,8 @@ export async function PUT(
       }
     })
 
-    // If HOTEL customer and generalPrompt was updated, update pricingPrompt block
-    if (session.user.customerType === "HOTEL" && data.generalPrompt) {
+    // If HOTEL customer, always update pricingPrompt block (to ensure it's synced)
+    if (session.user.customerType === "HOTEL") {
       updateBotPromptWithPricingPrompt(botId, organizationId).catch((err) => {
         console.error("[PUT /api/bots/[botId]] Failed to update pricingPrompt:", err)
         // Don't fail bot update if pricingPrompt update fails

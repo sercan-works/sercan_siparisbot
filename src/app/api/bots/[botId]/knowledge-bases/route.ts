@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
+import { updateBotPromptWithPricingPrompt } from "@/lib/bot-prompt-helper"
 
 export const dynamic = "force-dynamic"
 
@@ -114,7 +115,7 @@ export async function POST(
       )
     }
 
-    // Create assignment in database (no longer updating prompt - tools handle data access)
+    // Create assignment in database
     const assignment = await prisma.botKnowledgeBase.create({
       data: {
         botId: params.botId,
@@ -126,6 +127,23 @@ export async function POST(
         knowledgeBase: true
       }
     })
+
+    // Update bot prompt with pricingPrompt if KB belongs to HOTEL customer
+    if (kb.customerId) {
+      const customer = await prisma.user.findFirst({
+        where: {
+          id: kb.customerId,
+          customerType: "HOTEL"
+        }
+      })
+
+      if (customer) {
+        updateBotPromptWithPricingPrompt(params.botId, organizationId).catch((err) => {
+          console.error("[POST /api/bots/[botId]/knowledge-bases] Failed to update pricingPrompt:", err)
+          // Don't fail KB assignment if pricingPrompt update fails
+        })
+      }
+    }
 
     return NextResponse.json({ assignment }, { status: 201 })
   } catch (error) {

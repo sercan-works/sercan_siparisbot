@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { getRetellClient, callRetellApi } from "@/lib/retell"
+import { updateBotPromptWithPricingPrompt } from "@/lib/bot-prompt-helper"
 
 export const dynamic = "force-dynamic"
 
@@ -102,6 +103,24 @@ export async function DELETE(
       where: { id: bot.id },
       data: { generalPrompt: updatedPrompt }
     })
+
+    // Update bot prompt with pricingPrompt (to remove pricingPrompt if KB was removed)
+    // Check if KB belongs to HOTEL customer
+    if (assignment.knowledgeBase.customerId) {
+      const customer = await prisma.user.findFirst({
+        where: {
+          id: assignment.knowledgeBase.customerId,
+          customerType: "HOTEL"
+        }
+      })
+
+      if (customer) {
+        updateBotPromptWithPricingPrompt(params.botId, organizationId).catch((err) => {
+          console.error("[DELETE /api/bots/[botId]/knowledge-bases/[assignmentId]] Failed to update pricingPrompt:", err)
+          // Don't fail KB unassignment if pricingPrompt update fails
+        })
+      }
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {
