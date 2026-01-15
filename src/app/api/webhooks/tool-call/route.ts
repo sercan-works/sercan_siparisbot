@@ -860,6 +860,7 @@ async function executeBuiltInTool(
 
         // Get organizationId and customerId from call context
         const organizationId = call.bot.organizationId
+        console.log("[check_availability] Organization ID:", organizationId)
         
         // Find bot-assigned user (customer)
         let customerId: string | null = null
@@ -869,6 +870,7 @@ async function executeBuiltInTool(
             include: { user: true }
           })
           customerId = botAssignment?.user?.id || null
+          console.log("[check_availability] Bot assignment found:", { customerId, botId: call.bot.id })
         }
 
         if (!customerId) {
@@ -880,11 +882,22 @@ async function executeBuiltInTool(
             }
           })
           customerId = hotelCustomer?.id || null
+          console.log("[check_availability] Fallback customer found:", { customerId })
         }
 
         if (!customerId) {
           throw new Error("No customer found for this bot")
         }
+
+        console.log("[check_availability] Using customer ID:", customerId)
+        console.log("[check_availability] Search params:", {
+          organizationId,
+          customerId,
+          roomType: args.roomType,
+          guests: args.guests,
+          checkIn: args.checkIn,
+          checkOut: args.checkOut
+        })
 
         // Helper to check availability for a specific range
         const checkRange = async (start: Date, end: Date) => {
@@ -899,11 +912,18 @@ async function executeBuiltInTool(
             }
           })
 
-          if (roomTypes.length === 0) return { available: false, rooms: [] }
+          console.log("[check_availability] Found room types:", roomTypes.length, roomTypes.map(r => ({ id: r.id, name: r.name, totalRooms: r.totalRooms, maxGuests: r.maxGuests })))
+
+          if (roomTypes.length === 0) {
+            console.log("[check_availability] No room types found matching criteria")
+            return { available: false, rooms: [] }
+          }
 
           const validRooms = []
 
           for (const room of roomTypes) {
+            console.log(`[check_availability] Checking room: ${room.name} (ID: ${room.id}, Total: ${room.totalRooms})`)
+            
             // Check blocked dates
             const blocked = await prisma.roomAvailability.count({
               where: {
@@ -912,9 +932,13 @@ async function executeBuiltInTool(
                 date: { gte: start, lt: end }
               }
             })
-            if (blocked > 0) continue
+            
+            if (blocked > 0) {
+              console.log(`[check_availability] Room ${room.name} has ${blocked} blocked dates, skipping`)
+              continue
+            }
 
-            // Check reservations
+            // Check reservations - overlap logic: reservation overlaps if it starts before end AND ends after start
             const bookings = await prisma.reservation.count({
               where: {
                 roomTypeId: room.id,
@@ -927,23 +951,40 @@ async function executeBuiltInTool(
               }
             })
 
+            console.log(`[check_availability] Room ${room.name}: ${bookings} bookings found for date range ${start.toISOString()} to ${end.toISOString()}`)
+            console.log(`[check_availability] Room ${room.name}: ${room.totalRooms} total - ${bookings} booked = ${room.totalRooms - bookings} available`)
+
             if (room.totalRooms - bookings > 0) {
               validRooms.push({
                 name: room.name,
                 price: room.pricePerNight,
                 count: room.totalRooms - bookings
               })
+              console.log(`[check_availability] ✓ Room ${room.name} is available (${room.totalRooms - bookings} rooms)`)
+            } else {
+              console.log(`[check_availability] ✗ Room ${room.name} is fully booked`)
             }
           }
 
           return { available: validRooms.length > 0, rooms: validRooms }
         }
 
+        // Parse dates - ensure they are at start of day (00:00:00)
         const startDate = new Date(args.checkIn)
+        startDate.setHours(0, 0, 0, 0)
         const endDate = new Date(args.checkOut)
+        endDate.setHours(0, 0, 0, 0)
+
+        console.log("[check_availability] Date range:", {
+          checkIn: args.checkIn,
+          checkOut: args.checkOut,
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString()
+        })
 
         // Check requested dates
         const primaryResult = await checkRange(startDate, endDate)
+        console.log("[check_availability] Primary result:", primaryResult)
 
         if (primaryResult.available) {
           const lowestPrice = Math.min(...primaryResult.rooms.map((r: any) => r.price))
