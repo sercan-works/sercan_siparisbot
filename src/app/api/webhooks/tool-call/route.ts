@@ -1031,7 +1031,7 @@ async function executeBuiltInTool(
       }
 
     case "get_room_types":
-      // Get all room types with availability directly (no internal fetch)
+      // Get all room types from Knowledge Base (no internal fetch)
       try {
         console.log("[get_room_types] Starting")
         
@@ -1071,54 +1071,100 @@ async function executeBuiltInTool(
           throw new Error("No customer found for this bot")
         }
 
-        // Get all active room types for this customer
-        const roomTypes = await prisma.roomType.findMany({
+        // Get room types from Knowledge Base
+        const knowledgeBase = await prisma.knowledgeBase.findFirst({
           where: {
             organizationId,
             customerId,
-            isActive: true
-          },
-          orderBy: {
-            name: "asc"
+            customer: {
+              customerType: "HOTEL"
+            }
           }
         })
 
-        // Calculate current availability for each room type
-        const now = new Date()
-        const roomTypesWithAvailability = await Promise.all(
-          roomTypes.map(async (roomType) => {
-            // Count active reservations (CONFIRMED or CHECKED_IN) that overlap with future dates
-            const activeReservations = await prisma.reservation.count({
-              where: {
-                roomTypeId: roomType.id,
-                status: { in: ["CONFIRMED", "CHECKED_IN"] },
-                checkOut: { gte: now } // Only future reservations
-              }
-            })
+        if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
+          return {
+            success: true,
+            roomTypes: [],
+            totalRoomTypes: 0,
+            message: "Oda tipi bilgisi bulunamadı."
+          }
+        }
 
-            const availableRooms = Math.max(0, roomType.totalRooms - activeReservations)
+        // Parse hotel data from KB JSON
+        let hotelData: any
+        try {
+          hotelData = JSON.parse(knowledgeBase.texts[0])
+        } catch (parseError) {
+          console.error("[get_room_types] Failed to parse KB JSON:", parseError)
+          return {
+            error: true,
+            message: "Oda tipi verisi okunamadı."
+          }
+        }
 
-            return {
-              id: roomType.id,
-              name: roomType.name,
-              description: roomType.description || "",
-              totalRooms: roomType.totalRooms,
-              availableRooms,
-              bookedRooms: activeReservations,
-              maxGuests: roomType.maxGuests,
-              pricePerNight: roomType.pricePerNight,
-              features: roomType.features || []
+        // Get room types from KB
+        const kbRoomTypes = hotelData.roomTypes || []
+
+        // Format room types for response
+        const formattedRoomTypes = kbRoomTypes.map((rt: any) => {
+          // Create features array from KB data
+          const featuresArray: string[] = []
+          if (rt.balkon && rt.balkon.toLowerCase() === "evet") featuresArray.push("Balkon")
+          if (rt.manzara) featuresArray.push(`Manzara: ${rt.manzara}`)
+          if (rt.minibar && rt.minibar.toLowerCase() === "evet") featuresArray.push("Minibar")
+          if (rt.kettle && rt.kettle.toLowerCase() === "evet") featuresArray.push("Kettle")
+          if (rt.kahveMak && rt.kahveMak.toLowerCase() === "evet") featuresArray.push("Kahve Makinesi")
+          if (rt.jakuzi && rt.jakuzi.toLowerCase() === "evet") featuresArray.push("Jakuzi")
+          if (rt.klima && rt.klima.toLowerCase() === "evet") featuresArray.push("Klima")
+          if (rt.safeBox && rt.safeBox.toLowerCase() === "evet") featuresArray.push("Kasa")
+          if (rt.tvTelefon && rt.tvTelefon.toLowerCase() === "evet") featuresArray.push("TV/Telefon")
+          if (rt.bornoz && rt.bornoz.toLowerCase() === "evet") featuresArray.push("Bornoz")
+          if (rt.mutfak && rt.mutfak.toLowerCase() === "evet") featuresArray.push("Mutfak")
+
+          return {
+            id: rt.id || "",
+            name: rt.name || "",
+            description: "",
+            totalRooms: parseInt(rt.adet || "0"),
+            availableRooms: parseInt(rt.adet || "0"), // KB'deki adet değeri kullanılıyor
+            bookedRooms: 0, // KB'de rezervasyon bilgisi yok, sadece toplam adet var
+            maxGuests: parseInt(rt.maxKisi || "2"),
+            pricePerNight: 0, // KB'de fiyat bilgisi yok, pricing.dailyRates'te var
+            features: featuresArray, // Array format as expected
+            // Include all details in a details object for reference
+            details: {
+              metrekare: rt.metrekare || null,
+              banyoSayisi: rt.banyoSayisi || null,
+              balkon: rt.balkon || null,
+              manzara: rt.manzara || null,
+              yatakTipi: rt.yatakTipi || null,
+              yatakSayisi: rt.yatakSayisi || null,
+              bukletler: rt.bukletler || null,
+              minibar: rt.minibar || null,
+              kettle: rt.kettle || null,
+              kahveMak: rt.kahveMak || null,
+              jakuzi: rt.jakuzi || null,
+              fonMak: rt.fonMak || null,
+              bornoz: rt.bornoz || null,
+              tvTelefon: rt.tvTelefon || null,
+              klima: rt.klima || null,
+              safeBox: rt.safeBox || null,
+              utu: rt.utu || null,
+              mutfak: rt.mutfak || null,
+              customFeatures: rt.customFeatures || {}
             }
-          })
-        )
+          }
+        })
 
-        console.log("[get_room_types] Room types fetched:", roomTypesWithAvailability.length)
+        console.log("[get_room_types] KB roomTypes found:", kbRoomTypes.length)
+        console.log("[get_room_types] Room types formatted:", formattedRoomTypes.length)
 
         return {
           success: true,
-          roomTypes: roomTypesWithAvailability,
-          totalRoomTypes: roomTypesWithAvailability.length,
-          message: `${roomTypesWithAvailability.length} oda tipi bulundu.`
+          roomTypes: formattedRoomTypes,
+          totalRoomTypes: formattedRoomTypes.length,
+          message: `${formattedRoomTypes.length} oda tipi bulundu.`
         }
 
       } catch (err: any) {
