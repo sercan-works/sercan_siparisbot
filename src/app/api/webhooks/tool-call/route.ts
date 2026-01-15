@@ -892,126 +892,83 @@ async function executeBuiltInTool(
         const endDate = new Date(args.checkOut)
         endDate.setHours(0, 0, 0, 0)
 
-        // Get all room types (filter by roomType if provided, and by guests capacity)
-        const roomTypes = await prisma.roomType.findMany({
+        // Get pricing data from Knowledge Base
+        const knowledgeBase = await prisma.knowledgeBase.findFirst({
           where: {
             organizationId,
             customerId,
-            isActive: true,
-            maxGuests: { gte: args.guests },
-            name: args.roomType ? { contains: args.roomType, mode: "insensitive" } : undefined
-          },
-          orderBy: { name: "asc" }
-        })
-
-        // Get room type IDs for filtering
-        const roomTypeIds = roomTypes.map((rt) => rt.id)
-
-        // Get all reservations in date range (filter by customerId and roomTypeIds)
-        const reservations = await prisma.reservation.findMany({
-          where: {
-            customerId,
-            roomTypeId: roomTypeIds.length > 0 ? { in: roomTypeIds } : undefined,
-            OR: [
-              { checkIn: { lte: endDate, gte: startDate } },
-              { checkOut: { lte: endDate, gte: startDate } },
-              { checkIn: { lte: startDate }, checkOut: { gte: endDate } }
-            ]
-          },
-          orderBy: { checkIn: "asc" }
-        })
-
-        // Get all blocked dates in range (filter by roomTypeIds)
-        const blockedDates = await prisma.roomAvailability.findMany({
-          where: {
-            roomTypeId: roomTypeIds.length > 0 ? { in: roomTypeIds } : undefined,
-            isBlocked: true,
-            date: { gte: startDate, lt: endDate }
-          },
-          include: {
-            roomType: {
-              select: {
-                id: true,
-                name: true
-              }
+            customer: {
+              customerType: "HOTEL"
             }
-          },
-          orderBy: { date: "asc" }
-        })
-
-        // Create a map for quick room type lookup (for reservations)
-        const roomTypeMap = new Map(roomTypes.map((rt) => [rt.id, rt]))
-
-        // Process room types with availability details
-        const roomTypesWithDetails = await Promise.all(
-          roomTypes.map(async (roomType) => {
-            // Count reservations for this room type in date range
-            const roomReservations = reservations.filter(
-              (r) => r.roomTypeId === roomType.id && 
-              ["CONFIRMED", "CHECKED_IN"].includes(r.status)
-            )
-
-            // Count blocked dates for this room type
-            const roomBlockedDates = blockedDates.filter(
-              (b) => b.roomTypeId === roomType.id
-            )
-
-            // Calculate available rooms
-            const bookedRooms = roomReservations.length
-            const availableRooms = Math.max(0, roomType.totalRooms - bookedRooms)
-
-            return {
-              id: roomType.id,
-              name: roomType.name,
-              description: roomType.description || "",
-              totalRooms: roomType.totalRooms,
-              bookedRooms,
-              availableRooms,
-              maxGuests: roomType.maxGuests,
-              pricePerNight: roomType.pricePerNight,
-              features: roomType.features || [],
-              blockedDatesCount: roomBlockedDates.length,
-              blockedDates: roomBlockedDates.map((b) => b.date.toISOString().split('T')[0])
-            }
-          })
-        )
-
-        // Format reservations for response
-        const formattedReservations = reservations.map((r) => {
-          const roomType = r.roomTypeId ? roomTypeMap.get(r.roomTypeId) : null
-          return {
-            id: r.id,
-            roomTypeId: r.roomTypeId,
-            roomTypeName: roomType?.name || r.roomType || "Unknown",
-            checkIn: r.checkIn.toISOString().split('T')[0],
-            checkOut: r.checkOut.toISOString().split('T')[0],
-            guests: r.numberOfGuests,
-            status: r.status,
-            guestName: r.guestName,
-            guestPhone: r.guestPhone,
-            totalPrice: r.totalPrice,
-            createdAt: r.createdAt.toISOString()
           }
         })
 
-        // Format blocked dates for response
-        const formattedBlockedDates = blockedDates.map((b) => ({
-          id: b.id,
-          roomTypeId: b.roomTypeId,
-          roomTypeName: b.roomType?.name || "Unknown",
-          date: b.date.toISOString().split('T')[0],
-          priceOverride: b.priceOverride || null
-        }))
+        if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
+          return {
+            error: true,
+            message: "Fiyatlandırma bilgisi bulunamadı."
+          }
+        }
+
+        // Parse hotel data from KB JSON
+        let hotelData: any
+        try {
+          hotelData = JSON.parse(knowledgeBase.texts[0])
+        } catch (parseError) {
+          console.error("[check_availability] Failed to parse KB JSON:", parseError)
+          return {
+            error: true,
+            message: "Fiyatlandırma verisi okunamadı."
+          }
+        }
+
+        const pricingData = hotelData.pricing || {}
+        let dailyRates = pricingData.dailyRates || []
+
+        // Filter daily rates for the date range
+        const filteredDailyRates = dailyRates.filter((rate: any) => {
+          if (!rate.date) return false
+          const rateDate = new Date(rate.date)
+          rateDate.setHours(0, 0, 0, 0)
+          return rateDate >= startDate && rateDate < endDate
+        })
+
+        // Sort by date
+        filteredDailyRates.sort((a: any, b: any) => {
+          return new Date(a.date).getTime() - new Date(b.date).getTime()
+        })
 
         // Check if any rooms are available
-        const hasAvailableRooms = roomTypesWithDetails.some((r) => r.availableRooms > 0)
-        const availableRoomTypes = roomTypesWithDetails.filter((r) => r.availableRooms > 0)
+        const hasAvailableRooms = filteredDailyRates.some((rate: any) => {
+          const availableRooms = parseInt(rate.availableRooms || "0")
+          return availableRooms > 0
+        })
+
+        // Calculate lowest price from all rates
+        let lowestPrice = Infinity
+        filteredDailyRates.forEach((rate: any) => {
+          const ppPrice = parseFloat(rate.ppPrice || "0")
+          const single = parseFloat(rate.single || "0")
+          const dbl = parseFloat(rate.dbl || "0")
+          const triple = parseFloat(rate.triple || "0")
+          
+          const prices = [ppPrice, single, dbl, triple].filter((p) => p > 0)
+          if (prices.length > 0) {
+            const minPrice = Math.min(...prices)
+            if (minPrice < lowestPrice) {
+              lowestPrice = minPrice
+            }
+          }
+        })
 
         // Generate message
         let message = ""
-        if (hasAvailableRooms) {
-          const lowestPrice = Math.min(...availableRoomTypes.map((r) => r.pricePerNight))
-          message = `Evet, ${args.checkIn} - ${args.checkOut} tarihleri arasında ${availableRoomTypes.length} farklı oda tipimiz müsait. Fiyatlarımız gecelik ${lowestPrice} TL'den başlıyor.`
+        if (hasAvailableRooms && filteredDailyRates.length > 0) {
+          if (lowestPrice !== Infinity) {
+            message = `Evet, ${args.checkIn} - ${args.checkOut} tarihleri arasında müsaitliğimiz var. Fiyatlarımız gecelik ${lowestPrice} TL'den başlıyor.`
+          } else {
+            message = `Evet, ${args.checkIn} - ${args.checkOut} tarihleri arasında müsaitliğimiz var.`
+          }
         } else {
           message = `Maalesef ${args.checkIn} - ${args.checkOut} tarihleri arasında istediğiniz kriterde boş odamız kalmadı.`
         }
@@ -1023,14 +980,8 @@ async function executeBuiltInTool(
             checkIn: args.checkIn,
             checkOut: args.checkOut
           },
-          roomTypes: roomTypesWithDetails,
-          reservations: formattedReservations,
-          blockedDates: formattedBlockedDates,
-          summary: {
-            totalRoomTypes: roomTypesWithDetails.length,
-            availableRoomTypes: availableRoomTypes.length,
-            totalReservations: formattedReservations.length,
-            totalBlockedDates: formattedBlockedDates.length
+          pricing: {
+            dailyRates: filteredDailyRates
           },
           message
         }
