@@ -14,14 +14,70 @@ const availabilityCheckSchema = z.object({
 
 export async function POST(req: NextRequest) {
     try {
+        const { searchParams } = new URL(req.url)
+        const botId = searchParams.get("botId")
+        const internalCall = req.headers.get("x-internal-call") === "true"
+        
         const body = await req.json()
         const { checkIn, checkOut, guests, roomType } = availabilityCheckSchema.parse(body)
 
+        // Get organizationId and customerId
+        let organizationId: string | undefined
+        let customerId: string | undefined
+
+        // For internal calls (from tool-call route), use botId
+        if (internalCall && botId) {
+            const bot = await prisma.bot.findUnique({
+                where: { id: botId },
+                select: { organizationId: true }
+            })
+
+            if (!bot) {
+                return NextResponse.json({ error: "Bot not found" }, { status: 404 })
+            }
+
+            organizationId = bot.organizationId
+
+            // Find bot-assigned user
+            const botAssignment = await prisma.botAssignment.findFirst({
+                where: { botId },
+                include: { user: true }
+            })
+
+            customerId = botAssignment?.user?.id
+
+            if (!customerId) {
+                // Fallback: Find first HOTEL customer in organization
+                const hotelCustomer = await prisma.user.findFirst({
+                    where: {
+                        organizationId,
+                        customerType: "HOTEL"
+                    }
+                })
+                customerId = hotelCustomer?.id || undefined
+            }
+
+            if (!customerId) {
+                return NextResponse.json(
+                    { error: "No customer assigned to this bot" },
+                    { status: 404 }
+                )
+            }
+        } else {
+            // For external calls, require session (not implemented yet for availability)
+            return NextResponse.json(
+                { error: "This endpoint requires internal call context" },
+                { status: 403 }
+            )
+        }
+
         // Helper to check availability for a specific range
         const checkRange = async (start: Date, end: Date) => {
-            // 1. Find rooms matching guest capacity
+            // 1. Find rooms matching guest capacity, organizationId, and customerId
             const roomTypes = await prisma.roomType.findMany({
                 where: {
+                    organizationId: organizationId!,
+                    customerId: customerId!,
                     isActive: true,
                     maxGuests: { gte: guests },
                     name: roomType ? { contains: roomType, mode: "insensitive" } : undefined
@@ -125,10 +181,14 @@ export async function POST(req: NextRequest) {
             message
         })
 
-    } catch (error) {
-        console.error("Availability check failed:", error)
+    } catch (error: any) {
+        console.error("[availability] Error:", error)
+        console.error("[availability] Error details:", error.message, error.stack)
         return NextResponse.json(
-            { error: "Failed to check availability" },
+            { 
+                error: "Failed to check availability",
+                details: error.message || String(error)
+            },
             { status: 500 }
         )
     }

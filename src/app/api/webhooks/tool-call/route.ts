@@ -858,14 +858,43 @@ async function executeBuiltInTool(
           throw new Error("Invalid date format. Dates must be in YYYY-MM-DD format")
         }
 
-        // Call internal availability endpoint
+        // Get organizationId and customerId from call context
+        const organizationId = call.bot.organizationId
+        
+        // Find bot-assigned user (customer)
+        let customerId: string | null = null
+        if (call.bot?.id) {
+          const botAssignment = await prisma.botAssignment.findFirst({
+            where: { botId: call.bot.id },
+            include: { user: true }
+          })
+          customerId = botAssignment?.user?.id || null
+        }
+
+        if (!customerId) {
+          // Fallback: Find first HOTEL customer in organization
+          const hotelCustomer = await prisma.user.findFirst({
+            where: {
+              organizationId,
+              customerType: "HOTEL"
+            }
+          })
+          customerId = hotelCustomer?.id || null
+        }
+
+        if (!customerId) {
+          throw new Error("No customer found for this bot")
+        }
+
+        // Call internal availability endpoint with botId for context
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-        const availabilityUrl = `${baseUrl}/api/tools/availability`
+        const availabilityUrl = `${baseUrl}/api/tools/availability?botId=${call.bot.id}`
         
         const response = await fetch(availabilityUrl, {
           method: "POST",
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "x-internal-call": "true"
           },
           body: JSON.stringify({
             checkIn: args.checkIn,
@@ -876,7 +905,14 @@ async function executeBuiltInTool(
         })
 
         if (!response.ok) {
-          const errorText = await response.text()
+          let errorText: string
+          try {
+            const errorData = await response.json()
+            errorText = errorData.error || errorData.details || JSON.stringify(errorData)
+          } catch {
+            errorText = await response.text()
+          }
+          console.error("[check_availability] Availability endpoint error:", response.status, errorText)
           throw new Error(`Availability check failed: ${response.status} - ${errorText}`)
         }
 
