@@ -177,3 +177,16 @@ export const GET_PRICING_INFO_TOOL = {
         }
     }
 }
+
+export const GET_PRICE_RULES_TOOL = {
+    type: "function",
+    function: {
+        name: "get_price_rules",
+        description: "Get pricing calculation rules and instructions (Fiyat Hesaplama Prompt) from Hotel Knowledge Base. Use this when you need to understand how to calculate prices, apply discounts, or follow pricing rules for hotel rooms.",
+        parameters: {
+            type: "object",
+            properties: {},
+            required: []
+        }
+    }
+}

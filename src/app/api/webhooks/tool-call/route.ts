@@ -402,7 +402,8 @@ export async function POST(req: NextRequest) {
       "check_availability",
       "get_room_types",
       "get_hotel_info",
-      "get_pricing_info"
+      "get_pricing_info",
+      "get_price_rules"
     ]
 
     if (!toolDef && finalToolNameToUse && builtInToolNames.includes(finalToolNameToUse)) {
@@ -416,7 +417,8 @@ export async function POST(req: NextRequest) {
           CHECK_AVAILABILITY_TOOL,
           GET_ROOM_TYPES_TOOL,
           GET_HOTEL_INFO_TOOL,
-          GET_PRICING_INFO_TOOL
+          GET_PRICING_INFO_TOOL,
+          GET_PRICE_RULES_TOOL
         } = await import("@/lib/tools")
         
         let builtInTool = null
@@ -432,6 +434,8 @@ export async function POST(req: NextRequest) {
           builtInTool = GET_HOTEL_INFO_TOOL
         } else if (finalToolNameToUse === "get_pricing_info") {
           builtInTool = GET_PRICING_INFO_TOOL
+        } else if (finalToolNameToUse === "get_price_rules") {
+          builtInTool = GET_PRICE_RULES_TOOL
         }
         
         if (builtInTool) {
@@ -960,7 +964,7 @@ async function executeBuiltInTool(
           return availableRooms > 0
         })
 
-        // Calculate lowest price from all rates
+        // Calculate lowest price from all rates (for reference, LLM will use this to form its own response)
         let lowestPrice = Infinity
         filteredDailyRates.forEach((rate: any) => {
           const ppPrice = parseFloat(rate.ppPrice || "0")
@@ -977,31 +981,7 @@ async function executeBuiltInTool(
           }
         })
 
-        // Generate message
-        let message = ""
-        if (hasAvailableRooms && filteredDailyRates.length > 0) {
-          if (matchedRoomType) {
-            const availableRooms = matchedRoomType.adet || "0"
-            if (lowestPrice !== Infinity) {
-              message = `Evet, ${args.roomType} oda tipimiz ${args.checkIn} - ${args.checkOut} tarihleri arasında müsait. ${availableRooms} adet müsait oda var ve fiyatlarımız gecelik ${lowestPrice} TL'den başlıyor.`
-            } else {
-              message = `Evet, ${args.roomType} oda tipimiz ${args.checkIn} - ${args.checkOut} tarihleri arasında müsait. ${availableRooms} adet müsait oda var.`
-            }
-          } else {
-            if (lowestPrice !== Infinity) {
-              message = `Evet, ${args.checkIn} - ${args.checkOut} tarihleri arasında müsaitliğimiz var. Fiyatlarımız gecelik ${lowestPrice} TL'den başlıyor.`
-            } else {
-              message = `Evet, ${args.checkIn} - ${args.checkOut} tarihleri arasında müsaitliğimiz var.`
-            }
-          }
-        } else {
-          if (matchedRoomType) {
-            message = `Maalesef ${args.roomType} oda tipimiz ${args.checkIn} - ${args.checkOut} tarihleri arasında müsait değil.`
-          } else {
-            message = `Maalesef ${args.checkIn} - ${args.checkOut} tarihleri arasında istediğiniz kriterde boş odamız kalmadı.`
-          }
-        }
-
+        // Return data only - LLM will form its own natural response message
         return {
           success: true,
           available: hasAvailableRooms,
@@ -1016,9 +996,9 @@ async function executeBuiltInTool(
             features: matchedRoomType
           } : null,
           pricing: {
-            dailyRates: filteredDailyRates
-          },
-          message
+            dailyRates: filteredDailyRates,
+            lowestPrice: lowestPrice !== Infinity ? lowestPrice : null
+          }
         }
 
       } catch (err: any) {
@@ -1393,6 +1373,102 @@ async function executeBuiltInTool(
         return {
           error: true,
           message: `Fiyat bilgileri alınırken bir hata oluştu: ${err.message || err}`
+        }
+      }
+
+    case "get_price_rules":
+      // Get pricing calculation rules (Fiyat Hesaplama Prompt) from Hotel Knowledge Base
+      try {
+        console.log("[get_price_rules] Starting with args:", JSON.stringify(args, null, 2))
+        
+        // Validate call context
+        if (!call) {
+          throw new Error("Call record is missing")
+        }
+
+        if (!call.bot || !call.bot.organizationId) {
+          throw new Error("Call context missing organization/bot info")
+        }
+
+        const organizationId = call.bot.organizationId
+
+        // Find bot-assigned user (customer)
+        let customerId: string | null = null
+        if (call.bot?.id) {
+          const botAssignment = await prisma.botAssignment.findFirst({
+            where: { botId: call.bot.id },
+            include: { user: true }
+          })
+          customerId = botAssignment?.user?.id || null
+        }
+
+        if (!customerId) {
+          // Fallback: Find first HOTEL customer in organization
+          const hotelCustomer = await prisma.user.findFirst({
+            where: {
+              organizationId,
+              customerType: "HOTEL"
+            }
+          })
+          customerId = hotelCustomer?.id || null
+        }
+
+        if (!customerId) {
+          throw new Error("No customer found for this bot")
+        }
+
+        // Find hotel knowledge base for this customer
+        const knowledgeBase = await prisma.knowledgeBase.findFirst({
+          where: {
+            organizationId,
+            customerId,
+            customer: {
+              customerType: "HOTEL"
+            }
+          }
+        })
+
+        if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
+          return {
+            success: true,
+            pricingPrompt: null,
+            message: "Fiyat hesaplama prompt'u bulunamadı."
+          }
+        }
+
+        // Parse hotel data from KB JSON
+        let hotelData: any
+        try {
+          hotelData = JSON.parse(knowledgeBase.texts[0])
+        } catch (parseError) {
+          console.error("[get_price_rules] Failed to parse KB JSON:", parseError)
+          return {
+            error: true,
+            message: "Hotel bilgi bankası verisi okunamadı."
+          }
+        }
+
+        const pricingData = hotelData.pricing || {}
+        const pricingPrompt = pricingData.pricingPrompt || null
+
+        console.log("[get_price_rules] Pricing prompt fetched", {
+          hasPrompt: !!pricingPrompt,
+          promptLength: pricingPrompt ? pricingPrompt.length : 0
+        })
+
+        return {
+          success: true,
+          pricingPrompt: pricingPrompt,
+          message: pricingPrompt 
+            ? "Fiyat hesaplama kuralları başarıyla alındı." 
+            : "Fiyat hesaplama prompt'u bulunamadı."
+        }
+
+      } catch (err: any) {
+        console.error("[get_price_rules] Error:", err)
+        return {
+          error: true,
+          message: `Fiyat hesaplama kuralları alınırken bir hata oluştu: ${err.message || err}`
         }
       }
 

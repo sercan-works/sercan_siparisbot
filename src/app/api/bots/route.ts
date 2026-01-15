@@ -11,7 +11,8 @@ import {
   CREATE_ORDER_TOOL,
   GET_ROOM_TYPES_TOOL,
   GET_HOTEL_INFO_TOOL,
-  GET_PRICING_INFO_TOOL
+  GET_PRICING_INFO_TOOL,
+  GET_PRICE_RULES_TOOL
 } from "@/lib/tools"
 import { updateBotPromptWithPricingPrompt } from "@/lib/bot-prompt-helper"
 
@@ -192,7 +193,8 @@ export async function POST(req: NextRequest) {
               CREATE_RESERVATION_TOOL,
               GET_ROOM_TYPES_TOOL,
               GET_HOTEL_INFO_TOOL,
-              GET_PRICING_INFO_TOOL
+              GET_PRICING_INFO_TOOL,
+              GET_PRICE_RULES_TOOL
             ]
           : session.user.customerType === "RESTAURANT"
           ? [CREATE_ORDER_TOOL]
