@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
+import { updateBotPromptWithPricingPrompt } from "@/lib/bot-prompt-helper"
 
 export const dynamic = "force-dynamic"
 
@@ -161,7 +162,47 @@ export async function PUT(
       }
     })
 
-    // No longer updating bot prompts - tools handle data access instead of embedding KB in prompt
+    // Update bot prompts if pricingPrompt changed (only pricingPrompt, not full KB)
+    if (data.texts && knowledgeBase.bots.length > 0 && knowledgeBase.customer?.customerType === "HOTEL") {
+      try {
+        // Check if pricing.pricingPrompt changed
+        const oldKBTexts = existingKB.texts || []
+        const newKBTexts = data.texts
+        
+        let oldPricingPrompt = ""
+        let newPricingPrompt = ""
+        
+        try {
+          if (oldKBTexts.length > 0) {
+            const oldHotelData = JSON.parse(oldKBTexts[0])
+            oldPricingPrompt = oldHotelData.pricing?.pricingPrompt || ""
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+        
+        try {
+          if (newKBTexts.length > 0) {
+            const newHotelData = JSON.parse(newKBTexts[0])
+            newPricingPrompt = newHotelData.pricing?.pricingPrompt || ""
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+        
+        // If pricingPrompt changed, update all linked bots
+        if (oldPricingPrompt !== newPricingPrompt) {
+          for (const assignment of knowledgeBase.bots) {
+            updateBotPromptWithPricingPrompt(assignment.bot.id, organizationId).catch((err) => {
+              console.error(`[PUT /api/knowledge-bases/[id]] Failed to update pricingPrompt for bot ${assignment.bot.id}:`, err)
+            })
+          }
+        }
+      } catch (updateError) {
+        console.error("[PUT /api/knowledge-bases/[id]] Error checking pricingPrompt:", updateError)
+        // Don't fail KB update if pricingPrompt check fails
+      }
+    }
 
     return NextResponse.json({ knowledgeBase })
   } catch (error) {

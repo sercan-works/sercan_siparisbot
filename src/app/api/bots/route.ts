@@ -13,6 +13,7 @@ import {
   GET_HOTEL_INFO_TOOL,
   GET_PRICING_INFO_TOOL
 } from "@/lib/tools"
+import { updateBotPromptWithPricingPrompt } from "@/lib/bot-prompt-helper"
 
 export const dynamic = "force-dynamic"
 
@@ -211,6 +212,14 @@ export async function POST(req: NextRequest) {
         }
       }
     })
+
+    // If HOTEL customer, update bot prompt with pricingPrompt from assigned KBs
+    if (session.user.customerType === "HOTEL") {
+      updateBotPromptWithPricingPrompt(bot.id, organizationId).catch((err) => {
+        console.error("[POST /api/bots] Failed to update pricingPrompt:", err)
+        // Don't fail bot creation if pricingPrompt update fails
+      })
+    }
 
     return NextResponse.json({ bot }, { status: 201 })
   } catch (error) {

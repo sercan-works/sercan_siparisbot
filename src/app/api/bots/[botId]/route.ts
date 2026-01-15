@@ -13,6 +13,7 @@ import {
   GET_PRICING_INFO_TOOL
 } from "@/lib/tools"
 import { getRetellApiKey } from "@/lib/retell"
+import { updateBotPromptWithPricingPrompt } from "@/lib/bot-prompt-helper"
 
 export const dynamic = "force-dynamic"
 
@@ -263,6 +264,14 @@ export async function PUT(
         }
       }
     })
+
+    // If HOTEL customer and generalPrompt was updated, update pricingPrompt block
+    if (session.user.customerType === "HOTEL" && data.generalPrompt) {
+      updateBotPromptWithPricingPrompt(botId, organizationId).catch((err) => {
+        console.error("[PUT /api/bots/[botId]] Failed to update pricingPrompt:", err)
+        // Don't fail bot update if pricingPrompt update fails
+      })
+    }
 
     return NextResponse.json({ bot })
   } catch (error) {
