@@ -904,11 +904,14 @@ async function executeBuiltInTool(
           orderBy: { name: "asc" }
         })
 
-        // Get all reservations in date range
+        // Get room type IDs for filtering
+        const roomTypeIds = roomTypes.map((rt) => rt.id)
+
+        // Get all reservations in date range (filter by customerId and roomTypeIds)
         const reservations = await prisma.reservation.findMany({
           where: {
-            organizationId,
             customerId,
+            roomTypeId: roomTypeIds.length > 0 ? { in: roomTypeIds } : undefined,
             OR: [
               { checkIn: { lte: endDate, gte: startDate } },
               { checkOut: { lte: endDate, gte: startDate } },
@@ -926,11 +929,10 @@ async function executeBuiltInTool(
           orderBy: { checkIn: "asc" }
         })
 
-        // Get all blocked dates in range
+        // Get all blocked dates in range (filter by roomTypeIds)
         const blockedDates = await prisma.roomAvailability.findMany({
           where: {
-            organizationId,
-            customerId,
+            roomTypeId: roomTypeIds.length > 0 ? { in: roomTypeIds } : undefined,
             isBlocked: true,
             date: { gte: startDate, lt: endDate }
           },
@@ -986,7 +988,7 @@ async function executeBuiltInTool(
           roomTypeName: r.roomType?.name || "Unknown",
           checkIn: r.checkIn.toISOString().split('T')[0],
           checkOut: r.checkOut.toISOString().split('T')[0],
-          guests: r.guests,
+          guests: r.numberOfGuests,
           status: r.status,
           guestName: r.guestName,
           guestPhone: r.guestPhone,
@@ -1000,7 +1002,7 @@ async function executeBuiltInTool(
           roomTypeId: b.roomTypeId,
           roomTypeName: b.roomType?.name || "Unknown",
           date: b.date.toISOString().split('T')[0],
-          reason: b.reason || ""
+          priceOverride: b.priceOverride || null
         }))
 
         // Check if any rooms are available
