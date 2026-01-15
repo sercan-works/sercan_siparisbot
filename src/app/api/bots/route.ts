@@ -121,8 +121,41 @@ export async function POST(req: NextRequest) {
     }
 
     // SDK exposes agents but not LLM creation, keep raw call via internal client
-    const llm = await callRetellApi("POST", "/create-retell-llm", llmPayload, organizationId) as any
-    console.log("LLM creation response:", JSON.stringify(llm, null, 2))
+    console.log("[bot creation] LLM payload (before tools):", JSON.stringify({ ...llmPayload, general_tools: llmPayload.general_tools ? `${llmPayload.general_tools.length} tools` : "none" }, null, 2))
+    
+    // Create LLM first without tools (Retell API may not accept general_tools in create)
+    const llmPayloadWithoutTools = { ...llmPayload }
+    const toolsToAdd = llmPayloadWithoutTools.general_tools
+    delete llmPayloadWithoutTools.general_tools
+    
+    const llm = await callRetellApi("POST", "/create-retell-llm", llmPayloadWithoutTools, organizationId) as any
+    console.log("[bot creation] LLM creation response:", JSON.stringify(llm, null, 2))
+
+    // Check if llm_id exists
+    if (!llm?.llm_id) {
+      console.error("[bot creation] Invalid LLM response - missing llm_id:", llm)
+      throw new Error("Failed to create LLM: Invalid response from Retell API")
+    }
+
+    // Add tools to LLM after creation (if tools were specified)
+    if (toolsToAdd && toolsToAdd.length > 0) {
+      console.log("[bot creation] Adding tools to LLM:", toolsToAdd.length, "tools")
+      try {
+        await callRetellApi(
+          "PATCH",
+          `/update-retell-llm/${llm.llm_id}`,
+          {
+            general_tools: toolsToAdd,
+            tool_call_url: toolCallWebhookUrl
+          },
+          organizationId
+        )
+        console.log("[bot creation] Tools successfully added to LLM")
+      } catch (toolError: any) {
+        console.error("[bot creation] Failed to add tools to LLM:", toolError)
+        // Don't fail bot creation if tool addition fails, but log it
+      }
+    }
 
     // Step 2: Create Agent in Retell with advanced settings
     const defaultWebhookUrl = process.env.NEXT_PUBLIC_APP_URL
@@ -132,12 +165,6 @@ export async function POST(req: NextRequest) {
       : 'https://siparisbot.vercel.app/api/webhooks/retell' // Fallback
 
     const webhookUrl = data.webhookUrl || defaultWebhookUrl
-
-    // Check if llm_id exists
-    if (!llm?.llm_id) {
-      console.error("Invalid LLM response - missing llm_id:", llm)
-      throw new Error("Failed to create LLM: Invalid response from Retell API")
-    }
 
     const agentPayload: any = {
       response_engine: {
