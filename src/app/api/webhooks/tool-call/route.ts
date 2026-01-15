@@ -996,7 +996,7 @@ async function executeBuiltInTool(
       }
 
     case "get_room_types":
-      // Get all room types with availability
+      // Get all room types with availability directly (no internal fetch)
       try {
         console.log("[get_room_types] Starting")
         
@@ -1009,32 +1009,81 @@ async function executeBuiltInTool(
           throw new Error("Call context missing organization/bot info")
         }
 
-        // Call internal room-types endpoint
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-        const roomTypesUrl = `${baseUrl}/api/tools/room-types?botId=${call.bot.id}`
+        const organizationId = call.bot.organizationId
         
-        const response = await fetch(roomTypesUrl, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "x-internal-call": "true"
+        // Find bot-assigned user (customer)
+        let customerId: string | null = null
+        if (call.bot?.id) {
+          const botAssignment = await prisma.botAssignment.findFirst({
+            where: { botId: call.bot.id },
+            include: { user: true }
+          })
+          customerId = botAssignment?.user?.id || null
+        }
+
+        if (!customerId) {
+          // Fallback: Find first HOTEL customer in organization
+          const hotelCustomer = await prisma.user.findFirst({
+            where: {
+              organizationId,
+              customerType: "HOTEL"
+            }
+          })
+          customerId = hotelCustomer?.id || null
+        }
+
+        if (!customerId) {
+          throw new Error("No customer found for this bot")
+        }
+
+        // Get all active room types for this customer
+        const roomTypes = await prisma.roomType.findMany({
+          where: {
+            organizationId,
+            customerId,
+            isActive: true
+          },
+          orderBy: {
+            name: "asc"
           }
         })
 
-        if (!response.ok) {
-          const errorText = await response.text()
-          throw new Error(`Room types fetch failed: ${response.status} - ${errorText}`)
-        }
+        // Calculate current availability for each room type
+        const now = new Date()
+        const roomTypesWithAvailability = await Promise.all(
+          roomTypes.map(async (roomType) => {
+            // Count active reservations (CONFIRMED or CHECKED_IN) that overlap with future dates
+            const activeReservations = await prisma.reservation.count({
+              where: {
+                roomTypeId: roomType.id,
+                status: { in: ["CONFIRMED", "CHECKED_IN"] },
+                checkOut: { gte: now } // Only future reservations
+              }
+            })
 
-        const roomTypesData = await response.json()
-        
-        console.log("[get_room_types] Room types fetched:", roomTypesData.totalRoomTypes)
+            const availableRooms = Math.max(0, roomType.totalRooms - activeReservations)
+
+            return {
+              id: roomType.id,
+              name: roomType.name,
+              description: roomType.description || "",
+              totalRooms: roomType.totalRooms,
+              availableRooms,
+              bookedRooms: activeReservations,
+              maxGuests: roomType.maxGuests,
+              pricePerNight: roomType.pricePerNight,
+              features: roomType.features || []
+            }
+          })
+        )
+
+        console.log("[get_room_types] Room types fetched:", roomTypesWithAvailability.length)
 
         return {
           success: true,
-          roomTypes: roomTypesData.roomTypes || [],
-          totalRoomTypes: roomTypesData.totalRoomTypes || 0,
-          message: `${roomTypesData.totalRoomTypes || 0} oda tipi bulundu.`
+          roomTypes: roomTypesWithAvailability,
+          totalRoomTypes: roomTypesWithAvailability.length,
+          message: `${roomTypesWithAvailability.length} oda tipi bulundu.`
         }
 
       } catch (err: any) {
@@ -1046,7 +1095,7 @@ async function executeBuiltInTool(
       }
 
     case "get_hotel_info":
-      // Get hotel information from KB
+      // Get hotel information from KB directly (no internal fetch)
       try {
         console.log("[get_hotel_info] Starting with args:", JSON.stringify(args, null, 2))
         
@@ -1059,33 +1108,95 @@ async function executeBuiltInTool(
           throw new Error("Call context missing organization/bot info")
         }
 
+        const organizationId = call.bot.organizationId
         const section = args.section || "all"
 
-        // Call internal hotel-info endpoint
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-        const hotelInfoUrl = `${baseUrl}/api/tools/hotel-info?botId=${call.bot.id}&section=${section}`
-        
-        const response = await fetch(hotelInfoUrl, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "x-internal-call": "true"
+        // Find bot-assigned user (customer)
+        let customerId: string | null = null
+        if (call.bot?.id) {
+          const botAssignment = await prisma.botAssignment.findFirst({
+            where: { botId: call.bot.id },
+            include: { user: true }
+          })
+          customerId = botAssignment?.user?.id || null
+        }
+
+        if (!customerId) {
+          // Fallback: Find first HOTEL customer in organization
+          const hotelCustomer = await prisma.user.findFirst({
+            where: {
+              organizationId,
+              customerType: "HOTEL"
+            }
+          })
+          customerId = hotelCustomer?.id || null
+        }
+
+        if (!customerId) {
+          throw new Error("No customer found for this bot")
+        }
+
+        // Find hotel knowledge base for this customer
+        const knowledgeBase = await prisma.knowledgeBase.findFirst({
+          where: {
+            organizationId,
+            customerId,
+            customer: {
+              customerType: "HOTEL"
+            }
           }
         })
 
-        if (!response.ok) {
-          const errorText = await response.text()
-          throw new Error(`Hotel info fetch failed: ${response.status} - ${errorText}`)
+        if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
+          return {
+            success: true,
+            section: section === "all" ? "all" : section,
+            data: {},
+            message: "Otel bilgisi bulunamadı."
+          }
         }
 
-        const hotelInfoData = await response.json()
-        
+        // Parse hotel data from KB JSON
+        let hotelData: any
+        try {
+          hotelData = JSON.parse(knowledgeBase.texts[0])
+        } catch (parseError) {
+          console.error("[get_hotel_info] Failed to parse KB JSON:", parseError)
+          return {
+            error: true,
+            message: "Otel verisi okunamadı."
+          }
+        }
+
+        // Return requested section or all data
+        let responseData: any = {}
+
+        if (section === "all" || section === "facility") {
+          responseData.facilityInfo = hotelData.facilityInfo || {}
+        }
+
+        if (section === "all" || section === "services") {
+          responseData.services = hotelData.services || { free: [], paid: [] }
+        }
+
+        if (section === "all" || section === "policies") {
+          responseData.policies = hotelData.policies || []
+        }
+
+        if (section === "all" || section === "concept") {
+          responseData.conceptFeatures = hotelData.conceptFeatures || {}
+        }
+
+        if (section === "all" || section === "menus") {
+          responseData.menus = hotelData.menus || []
+        }
+
         console.log("[get_hotel_info] Hotel info fetched for section:", section)
 
         return {
           success: true,
-          section: hotelInfoData.section || section,
-          data: hotelInfoData.data || {},
+          section: section === "all" ? "all" : section,
+          data: responseData,
           message: "Otel bilgileri başarıyla alındı."
         }
 
@@ -1098,7 +1209,7 @@ async function executeBuiltInTool(
       }
 
     case "get_pricing_info":
-      // Get pricing information
+      // Get pricing information directly from KB (no internal fetch)
       try {
         console.log("[get_pricing_info] Starting with args:", JSON.stringify(args, null, 2))
         
@@ -1111,33 +1222,88 @@ async function executeBuiltInTool(
           throw new Error("Call context missing organization/bot info")
         }
 
+        const organizationId = call.bot.organizationId
         const date = args.date || null
 
-        // Call internal pricing endpoint
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-        const pricingUrl = `${baseUrl}/api/tools/pricing?botId=${call.bot.id}${date ? `&date=${date}` : ""}`
-        
-        const response = await fetch(pricingUrl, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "x-internal-call": "true"
+        // Find bot-assigned user (customer)
+        let customerId: string | null = null
+        if (call.bot?.id) {
+          const botAssignment = await prisma.botAssignment.findFirst({
+            where: { botId: call.bot.id },
+            include: { user: true }
+          })
+          customerId = botAssignment?.user?.id || null
+        }
+
+        if (!customerId) {
+          // Fallback: Find first HOTEL customer in organization
+          const hotelCustomer = await prisma.user.findFirst({
+            where: {
+              organizationId,
+              customerType: "HOTEL"
+            }
+          })
+          customerId = hotelCustomer?.id || null
+        }
+
+        if (!customerId) {
+          throw new Error("No customer found for this bot")
+        }
+
+        // Find hotel knowledge base for this customer
+        const knowledgeBase = await prisma.knowledgeBase.findFirst({
+          where: {
+            organizationId,
+            customerId,
+            customer: {
+              customerType: "HOTEL"
+            }
           }
         })
 
-        if (!response.ok) {
-          const errorText = await response.text()
-          throw new Error(`Pricing info fetch failed: ${response.status} - ${errorText}`)
+        if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
+          return {
+            success: true,
+            date: date || null,
+            data: {
+              dailyRates: [],
+              rules: {},
+              discounts: []
+            },
+            message: "Fiyatlandırma bilgisi bulunamadı."
+          }
         }
 
-        const pricingData = await response.json()
-        
+        // Parse hotel data from KB JSON
+        let hotelData: any
+        try {
+          hotelData = JSON.parse(knowledgeBase.texts[0])
+        } catch (parseError) {
+          console.error("[get_pricing_info] Failed to parse KB JSON:", parseError)
+          return {
+            error: true,
+            message: "Fiyatlandırma verisi okunamadı."
+          }
+        }
+
+        const pricingData = hotelData.pricing || {}
+
+        // If specific date requested, filter daily rates
+        let dailyRates = pricingData.dailyRates || []
+        if (date) {
+          dailyRates = dailyRates.filter((rate: any) => rate.date === date)
+        }
+
         console.log("[get_pricing_info] Pricing info fetched for date:", date || "all")
 
         return {
           success: true,
-          date: pricingData.date || null,
-          data: pricingData.data || {},
+          date: date || null,
+          data: {
+            dailyRates: dailyRates,
+            rules: pricingData.rules || {},
+            discounts: pricingData.discounts || []
+          },
           message: "Fiyat bilgileri başarıyla alındı."
         }
 
