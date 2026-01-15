@@ -1,5 +1,4 @@
 import { prisma } from "./prisma"
-import { callRetellApi } from "./retell"
 
 /**
  * Update room count in knowledge bases for a given customer and room type
@@ -98,64 +97,7 @@ export async function updateKnowledgeBaseRoomCount(
 
         console.log(`[KB Update] Updated KB ${kb.id} in database`)
 
-        // Update bot prompts for linked bots (same logic as PUT endpoint)
-        if (kb.bots.length > 0) {
-          const block = (kbName: string, kbTexts: string[], kbId: string) => {
-            const content = kbTexts.join("\n---\n")
-            return `\n\n<!--KB:${kbId}-->\n## Knowledge Base (${kbName})\n${content}\n<!--/KB:${kbId}-->`
-          }
-
-          const upsertBlock = (prompt: string, kbId: string, blk: string) => {
-            const start = `<!--KB:${kbId}-->`
-            const end = `<!--/KB:${kbId}-->`
-            const regex = new RegExp(`${start}[\\s\\S]*?${end}`)
-            if (regex.test(prompt)) {
-              return prompt.replace(regex, blk)
-            }
-            return `${prompt}${blk}`
-          }
-
-          for (const assignment of kb.bots) {
-            const llmId = assignment.bot.retellLlmId
-            if (!llmId) {
-              console.warn(`[KB Update] Bot ${assignment.bot.id} has no retellLlmId, skipping prompt update`)
-              continue
-            }
-
-            const newBlock = block(kb.name, updatedTexts, kb.id)
-            const updatedPrompt = upsertBlock(assignment.bot.generalPrompt || "", kb.id, newBlock)
-
-            try {
-              await callRetellApi(
-                "PATCH",
-                `/update-retell-llm/${llmId}`,
-                { general_prompt: updatedPrompt },
-                organizationId
-              )
-              await prisma.bot.update({
-                where: { id: assignment.bot.id },
-                data: { generalPrompt: updatedPrompt }
-              })
-              console.log(`[KB Update] Synced bot ${assignment.bot.id} (LLM ${llmId}) prompt to Retell`)
-            } catch (syncErr: any) {
-              // Handle 404 errors when LLM no longer exists in Retell
-              if (syncErr.message?.includes("404") || syncErr.message?.includes("not found")) {
-                console.warn(
-                  `[KB Update] LLM not found in Retell for bot ${assignment.bot.id} (LLM ${llmId}), updating local prompt only`
-                )
-                // Still update local prompt even if Retell LLM doesn't exist
-                await prisma.bot.update({
-                  where: { id: assignment.bot.id },
-                  data: { generalPrompt: updatedPrompt }
-                }).catch(() => {
-                  console.warn(`[KB Update] Failed to update local prompt for bot ${assignment.bot.id}`)
-                })
-              } else {
-                console.warn(`[KB Update] Failed to sync LLM prompt for bot ${assignment.bot.id}:`, syncErr.message)
-              }
-            }
-          }
-        }
+        // No longer updating bot prompts - tools handle data access instead of embedding KB in prompt
       } catch (kbError: any) {
         console.error(`[KB Update] Error updating KB ${kb.id}:`, kbError)
         // Continue with other KBs even if one fails

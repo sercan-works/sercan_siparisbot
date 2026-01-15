@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { getRetellClient, callRetellApi } from "@/lib/retell"
 import { z } from "zod"
 
 export const dynamic = "force-dynamic"
@@ -162,59 +161,7 @@ export async function PUT(
       }
     })
 
-    // Update bot prompts for linked bots (replace KB block)
-    if (knowledgeBase.bots.length > 0) {
-      const block = (kbName: string, kbTexts: string[], kbId: string) => {
-        const content = kbTexts.join("\n---\n")
-        return `\n\n<!--KB:${kbId}-->\n## Knowledge Base (${kbName})\n${content}\n<!--/KB:${kbId}-->`
-      }
-      const upsertBlock = (prompt: string, kbId: string, blk: string) => {
-        const start = `<!--KB:${kbId}-->`
-        const end = `<!--/KB:${kbId}-->`
-        const regex = new RegExp(`${start}[\\s\\S]*?${end}`)
-        if (regex.test(prompt)) {
-          return prompt.replace(regex, blk)
-        }
-        return `${prompt}${blk}`
-      }
-
-      for (const assignment of knowledgeBase.bots) {
-        const llmId = assignment.bot.retellLlmId
-        if (!llmId) continue
-        const newBlock = block(knowledgeBase.name, data.texts || knowledgeBase.texts, knowledgeBase.id)
-        const updatedPrompt = upsertBlock(assignment.bot.generalPrompt || "", knowledgeBase.id, newBlock)
-
-        try {
-          await callRetellApi(
-            "PATCH",
-            `/update-retell-llm/${llmId}`,
-            { general_prompt: updatedPrompt },
-            organizationId
-          )
-          await prisma.bot.update({
-            where: { id: assignment.bot.id },
-            data: { generalPrompt: updatedPrompt }
-          })
-          console.log(`[KB Update] synced bot=${assignment.bot.id} llm=${llmId} prompt KB block`)
-        } catch (syncErr: any) {
-          // Handle 404 errors when LLM no longer exists in Retell
-          if (syncErr.message?.includes("404") || syncErr.message?.includes("not found")) {
-            console.warn(
-              `[KB Update] LLM not found in Retell for bot=${assignment.bot.id} llm=${llmId}, updating local prompt only`
-            )
-            // Still update local prompt even if Retell LLM doesn't exist
-            await prisma.bot.update({
-              where: { id: assignment.bot.id },
-              data: { generalPrompt: updatedPrompt }
-            }).catch(() => {
-              console.warn(`[KB Update] Failed to update local prompt for bot=${assignment.bot.id}`)
-            })
-          } else {
-            console.warn("[KB Update] failed to sync LLM KB list", syncErr)
-          }
-        }
-      }
-    }
+    // No longer updating bot prompts - tools handle data access instead of embedding KB in prompt
 
     return NextResponse.json({ knowledgeBase })
   } catch (error) {
@@ -273,52 +220,8 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 
-    // Remove KB block from all linked bot prompts (and Retell LLM)
-    const blockStart = `<!--KB:${existingKB.id}-->`
-    const blockEnd = `<!--/KB:${existingKB.id}-->`
-    const regex = new RegExp(`${blockStart}[\\s\\S]*?${blockEnd}`)
-    const warnings: string[] = []
-
-    for (const assignment of existingKB.bots) {
-      const llmId = assignment.bot.retellLlmId
-      if (!llmId) {
-        warnings.push(`Bot ${assignment.bot.id} missing retellLlmId`)
-        continue
-      }
-      const currentPrompt = assignment.bot.generalPrompt || ""
-      const updatedPrompt = currentPrompt.replace(regex, "")
-
-      try {
-        await callRetellApi(
-          "PATCH",
-          `/update-retell-llm/${llmId}`,
-          { general_prompt: updatedPrompt },
-          organizationId
-        )
-        await prisma.bot.update({
-          where: { id: assignment.bot.id },
-          data: { generalPrompt: updatedPrompt }
-        })
-      } catch (err: any) {
-        // Handle 404 errors when LLM no longer exists in Retell
-        if (err.message?.includes("404") || err.message?.includes("not found")) {
-          console.warn(
-            `[KB Delete] LLM not found in Retell for bot=${assignment.bot.id} llm=${llmId}, updating local prompt only`
-          )
-          // Still update local prompt even if Retell LLM doesn't exist
-          await prisma.bot.update({
-            where: { id: assignment.bot.id },
-            data: { generalPrompt: updatedPrompt }
-          }).catch(() => {
-            warnings.push(`Bot ${assignment.bot.id}: Failed to update local prompt`)
-          })
-        } else {
-          warnings.push(`Bot ${assignment.bot.id}: ${err.message}`)
-        }
-      }
-    }
-
-    // Delete from database only (cascade will remove BotKnowledgeBase entries)
+    // No longer removing KB blocks from prompts - tools handle data access
+    // Delete from database (cascade will remove BotKnowledgeBase entries)
     await prisma.knowledgeBase.delete({
       where: { id: params.id }
     })
