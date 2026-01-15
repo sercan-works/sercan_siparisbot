@@ -5,7 +5,14 @@ import { prisma } from "@/lib/prisma"
 import { getRetellClient, callRetellApi } from "@/lib/retell"
 import { createBotSchema } from "@/lib/validations"
 import { z } from "zod"
-import { CHECK_AVAILABILITY_TOOL, CREATE_RESERVATION_TOOL, CREATE_ORDER_TOOL } from "@/lib/tools"
+import {
+  CHECK_AVAILABILITY_TOOL,
+  CREATE_RESERVATION_TOOL,
+  CREATE_ORDER_TOOL,
+  GET_ROOM_TYPES_TOOL,
+  GET_HOTEL_INFO_TOOL,
+  GET_PRICING_INFO_TOOL
+} from "@/lib/tools"
 
 export const dynamic = "force-dynamic"
 
@@ -87,7 +94,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (session.user.customerType === "HOTEL") {
-      llmPayload.general_tools = [CHECK_AVAILABILITY_TOOL, CREATE_RESERVATION_TOOL]
+      llmPayload.general_tools = [
+        CHECK_AVAILABILITY_TOOL,
+        CREATE_RESERVATION_TOOL,
+        GET_ROOM_TYPES_TOOL,
+        GET_HOTEL_INFO_TOOL,
+        GET_PRICING_INFO_TOOL
+      ]
 
       // Auto-inject safety protocol
       const safetyProtocol = `\n\n## RESERVATION PROTOCOL (STRICT)\nBefore calling 'create_reservation', you MUST verbally confirm the details with the user: "So I have a request for [Guest Name] for [Room Type] from [Check-in] to [Check-out]. Is this correct?". Only proceed if they say YES.`
@@ -180,7 +193,13 @@ export async function POST(req: NextRequest) {
         normalizeForSpeech: data.normalizeForSpeech ?? true,
         optOutSensitiveDataStorage: data.optOutSensitiveDataStorage || false,
         customTools: session.user.customerType === "HOTEL" 
-          ? [CHECK_AVAILABILITY_TOOL, CREATE_RESERVATION_TOOL] 
+          ? [
+              CHECK_AVAILABILITY_TOOL,
+              CREATE_RESERVATION_TOOL,
+              GET_ROOM_TYPES_TOOL,
+              GET_HOTEL_INFO_TOOL,
+              GET_PRICING_INFO_TOOL
+            ]
           : session.user.customerType === "RESTAURANT"
           ? [CREATE_ORDER_TOOL]
           : undefined,

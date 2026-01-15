@@ -127,3 +127,53 @@ export const CREATE_ORDER_TOOL = {
         }
     }
 }
+
+export const GET_ROOM_TYPES_TOOL = {
+    type: "function",
+    function: {
+        name: "get_room_types",
+        description: "Get all available room types with their details including features, capacity, pricing, and current availability. Use this when customer asks about room types, room features, or wants to see what rooms are available.",
+        parameters: {
+            type: "object",
+            properties: {},
+            required: []
+        }
+    }
+}
+
+export const GET_HOTEL_INFO_TOOL = {
+    type: "function",
+    function: {
+        name: "get_hotel_info",
+        description: "Get general hotel information including facility details, services (free and paid), policies, concept features, and menus. Use this when customer asks about hotel facilities, services, policies, or general information about the hotel.",
+        parameters: {
+            type: "object",
+            properties: {
+                section: {
+                    type: "string",
+                    description: "Optional specific section to retrieve: 'facility', 'services', 'policies', 'concept', 'menus', or 'all' for everything. If not provided, returns all information.",
+                    enum: ["facility", "services", "policies", "concept", "menus", "all"]
+                }
+            },
+            required: []
+        }
+    }
+}
+
+export const GET_PRICING_INFO_TOOL = {
+    type: "function",
+    function: {
+        name: "get_pricing_info",
+        description: "Get pricing information including daily rates, pricing rules, and available discounts. Use this when customer asks about prices, rates, discounts, or pricing policies.",
+        parameters: {
+            type: "object",
+            properties: {
+                date: {
+                    type: "string",
+                    description: "Optional specific date in YYYY-MM-DD format to get pricing for that date. If not provided, returns general pricing information."
+                }
+            },
+            required: []
+        }
+    }
+}

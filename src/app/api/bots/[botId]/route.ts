@@ -4,7 +4,14 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { updateBotSchema } from "@/lib/validations"
 import { z } from "zod"
-import { CHECK_AVAILABILITY_TOOL, CREATE_RESERVATION_TOOL, CREATE_ORDER_TOOL } from "@/lib/tools"
+import {
+  CHECK_AVAILABILITY_TOOL,
+  CREATE_RESERVATION_TOOL,
+  CREATE_ORDER_TOOL,
+  GET_ROOM_TYPES_TOOL,
+  GET_HOTEL_INFO_TOOL,
+  GET_PRICING_INFO_TOOL
+} from "@/lib/tools"
 import { getRetellApiKey } from "@/lib/retell"
 
 export const dynamic = "force-dynamic"
@@ -176,10 +183,19 @@ export async function PUT(
 
     // Auto-inject tool for Hotels
     if (session.user.customerType === "HOTEL") {
-      // Filter out existing check_availability and create_reservation to avoid duplicates
-      finalTools = finalTools.filter((t: any) => t.function?.name !== "check_availability" && t.function?.name !== "create_reservation")
+      // Filter out existing hotel tools to avoid duplicates
+      finalTools = finalTools.filter((t: any) => 
+        t.function?.name !== "check_availability" &&
+        t.function?.name !== "create_reservation" &&
+        t.function?.name !== "get_room_types" &&
+        t.function?.name !== "get_hotel_info" &&
+        t.function?.name !== "get_pricing_info"
+      )
       finalTools.push(CHECK_AVAILABILITY_TOOL)
       finalTools.push(CREATE_RESERVATION_TOOL)
+      finalTools.push(GET_ROOM_TYPES_TOOL)
+      finalTools.push(GET_HOTEL_INFO_TOOL)
+      finalTools.push(GET_PRICING_INFO_TOOL)
     } else if (session.user.customerType === "RESTAURANT") {
       // Filter out existing create_order to avoid duplicates
       finalTools = finalTools.filter((t: any) => t.function?.name !== "create_order")

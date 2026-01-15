@@ -396,12 +396,28 @@ export async function POST(req: NextRequest) {
 
     // If tool not found and it's a built-in tool (create_order, create_reservation), try to inject it
     // This handles cases where bot's customTools is null or empty
-    if (!toolDef && finalToolNameToUse && (finalToolNameToUse === "create_order" || finalToolNameToUse === "create_reservation" || finalToolNameToUse === "check_availability")) {
+    const builtInToolNames = [
+      "create_order",
+      "create_reservation",
+      "check_availability",
+      "get_room_types",
+      "get_hotel_info",
+      "get_pricing_info"
+    ]
+
+    if (!toolDef && finalToolNameToUse && builtInToolNames.includes(finalToolNameToUse)) {
       console.log(`[tool-call] Tool '${finalToolNameToUse}' not found in bot's customTools (count: ${tools.length}), attempting to inject built-in tool...`)
       
       try {
         // Import built-in tools
-        const { CREATE_ORDER_TOOL, CREATE_RESERVATION_TOOL, CHECK_AVAILABILITY_TOOL } = await import("@/lib/tools")
+        const {
+          CREATE_ORDER_TOOL,
+          CREATE_RESERVATION_TOOL,
+          CHECK_AVAILABILITY_TOOL,
+          GET_ROOM_TYPES_TOOL,
+          GET_HOTEL_INFO_TOOL,
+          GET_PRICING_INFO_TOOL
+        } = await import("@/lib/tools")
         
         let builtInTool = null
         if (finalToolNameToUse === "create_order") {
@@ -410,6 +426,12 @@ export async function POST(req: NextRequest) {
           builtInTool = CREATE_RESERVATION_TOOL
         } else if (finalToolNameToUse === "check_availability") {
           builtInTool = CHECK_AVAILABILITY_TOOL
+        } else if (finalToolNameToUse === "get_room_types") {
+          builtInTool = GET_ROOM_TYPES_TOOL
+        } else if (finalToolNameToUse === "get_hotel_info") {
+          builtInTool = GET_HOTEL_INFO_TOOL
+        } else if (finalToolNameToUse === "get_pricing_info") {
+          builtInTool = GET_PRICING_INFO_TOOL
         }
         
         if (builtInTool) {
@@ -812,9 +834,225 @@ async function executeBuiltInTool(
       }
 
     case "check_availability":
-      // Not needed - KB handles availability
-      return {
-        message: "Müsaitlik bilgileri Knowledge Base'den alınmaktadır."
+      // Check room availability using availability endpoint
+      try {
+        console.log("[check_availability] Starting with args:", JSON.stringify(args, null, 2))
+        
+        // Validate call context
+        if (!call) {
+          throw new Error("Call record is missing")
+        }
+
+        if (!call.bot || !call.bot.organizationId) {
+          throw new Error("Call context missing organization/bot info")
+        }
+
+        // Validate required arguments
+        if (!args.checkIn || !args.checkOut || !args.guests) {
+          throw new Error("Required fields missing: checkIn, checkOut, and guests are required")
+        }
+
+        // Validate date format
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/
+        if (!dateRegex.test(args.checkIn) || !dateRegex.test(args.checkOut)) {
+          throw new Error("Invalid date format. Dates must be in YYYY-MM-DD format")
+        }
+
+        // Call internal availability endpoint
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+        const availabilityUrl = `${baseUrl}/api/tools/availability`
+        
+        const response = await fetch(availabilityUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            checkIn: args.checkIn,
+            checkOut: args.checkOut,
+            guests: args.guests,
+            roomType: args.roomType || undefined
+          })
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(`Availability check failed: ${response.status} - ${errorText}`)
+        }
+
+        const availabilityData = await response.json()
+        
+        console.log("[check_availability] Availability check result:", availabilityData)
+
+        return {
+          success: true,
+          available: availabilityData.available,
+          rooms: availabilityData.rooms || [],
+          message: availabilityData.message || "",
+          alternatives: availabilityData.alternatives || [],
+          lowestPrice: availabilityData.lowestPrice || null
+        }
+
+      } catch (err: any) {
+        console.error("[check_availability] Error:", err)
+        return {
+          error: true,
+          message: `Müsaitlik kontrolü yapılırken bir hata oluştu: ${err.message || err}`
+        }
+      }
+
+    case "get_room_types":
+      // Get all room types with availability
+      try {
+        console.log("[get_room_types] Starting")
+        
+        // Validate call context
+        if (!call) {
+          throw new Error("Call record is missing")
+        }
+
+        if (!call.bot || !call.bot.organizationId) {
+          throw new Error("Call context missing organization/bot info")
+        }
+
+        // Call internal room-types endpoint
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+        const roomTypesUrl = `${baseUrl}/api/tools/room-types?botId=${call.bot.id}`
+        
+        const response = await fetch(roomTypesUrl, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "x-internal-call": "true"
+          }
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(`Room types fetch failed: ${response.status} - ${errorText}`)
+        }
+
+        const roomTypesData = await response.json()
+        
+        console.log("[get_room_types] Room types fetched:", roomTypesData.totalRoomTypes)
+
+        return {
+          success: true,
+          roomTypes: roomTypesData.roomTypes || [],
+          totalRoomTypes: roomTypesData.totalRoomTypes || 0,
+          message: `${roomTypesData.totalRoomTypes || 0} oda tipi bulundu.`
+        }
+
+      } catch (err: any) {
+        console.error("[get_room_types] Error:", err)
+        return {
+          error: true,
+          message: `Oda tipleri alınırken bir hata oluştu: ${err.message || err}`
+        }
+      }
+
+    case "get_hotel_info":
+      // Get hotel information from KB
+      try {
+        console.log("[get_hotel_info] Starting with args:", JSON.stringify(args, null, 2))
+        
+        // Validate call context
+        if (!call) {
+          throw new Error("Call record is missing")
+        }
+
+        if (!call.bot || !call.bot.organizationId) {
+          throw new Error("Call context missing organization/bot info")
+        }
+
+        const section = args.section || "all"
+
+        // Call internal hotel-info endpoint
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+        const hotelInfoUrl = `${baseUrl}/api/tools/hotel-info?botId=${call.bot.id}&section=${section}`
+        
+        const response = await fetch(hotelInfoUrl, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "x-internal-call": "true"
+          }
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(`Hotel info fetch failed: ${response.status} - ${errorText}`)
+        }
+
+        const hotelInfoData = await response.json()
+        
+        console.log("[get_hotel_info] Hotel info fetched for section:", section)
+
+        return {
+          success: true,
+          section: hotelInfoData.section || section,
+          data: hotelInfoData.data || {},
+          message: "Otel bilgileri başarıyla alındı."
+        }
+
+      } catch (err: any) {
+        console.error("[get_hotel_info] Error:", err)
+        return {
+          error: true,
+          message: `Otel bilgileri alınırken bir hata oluştu: ${err.message || err}`
+        }
+      }
+
+    case "get_pricing_info":
+      // Get pricing information
+      try {
+        console.log("[get_pricing_info] Starting with args:", JSON.stringify(args, null, 2))
+        
+        // Validate call context
+        if (!call) {
+          throw new Error("Call record is missing")
+        }
+
+        if (!call.bot || !call.bot.organizationId) {
+          throw new Error("Call context missing organization/bot info")
+        }
+
+        const date = args.date || null
+
+        // Call internal pricing endpoint
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+        const pricingUrl = `${baseUrl}/api/tools/pricing?botId=${call.bot.id}${date ? `&date=${date}` : ""}`
+        
+        const response = await fetch(pricingUrl, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "x-internal-call": "true"
+          }
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(`Pricing info fetch failed: ${response.status} - ${errorText}`)
+        }
+
+        const pricingData = await response.json()
+        
+        console.log("[get_pricing_info] Pricing info fetched for date:", date || "all")
+
+        return {
+          success: true,
+          date: pricingData.date || null,
+          data: pricingData.data || {},
+          message: "Fiyat bilgileri başarıyla alındı."
+        }
+
+      } catch (err: any) {
+        console.error("[get_pricing_info] Error:", err)
+        return {
+          error: true,
+          message: `Fiyat bilgileri alınırken bir hata oluştu: ${err.message || err}`
+        }
       }
 
     case "create_reservation":
