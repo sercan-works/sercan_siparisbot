@@ -904,7 +904,7 @@ async function executeBuiltInTool(
         })
 
         if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
-          return {
+      return {
             error: true,
             message: "Fiyatlandırma bilgisi bulunamadı."
           }
@@ -1640,24 +1640,24 @@ async function executeBuiltInTool(
 
         // Create reservation and update room count in transaction
         const reservation = await prisma.$transaction(async (tx) => {
-          // Create reservation
+        // Create reservation
           const newReservation = await tx.reservation.create({
-            data: {
-              customerId: assignedUser.id, // Assign to bot-assigned user or HOTEL customer
-              callId: call.id,
-              guestName: args.guestName,
-              guestPhone: guestPhone || "Unknown",
-              checkIn: checkInDate,
-              checkOut: checkOutDate,
-              numberOfGuests: args.guests,
-              numberOfChildren: args.numberOfChildren || null,
-              numberOfRooms: 1, // Default to 1 room
+          data: {
+            customerId: assignedUser.id, // Assign to bot-assigned user or HOTEL customer
+            callId: call.id,
+            guestName: args.guestName,
+            guestPhone: guestPhone || "Unknown",
+            checkIn: checkInDate,
+            checkOut: checkOutDate,
+            numberOfGuests: args.guests,
+            numberOfChildren: args.numberOfChildren || null,
+            numberOfRooms: 1, // Default to 1 room
               roomTypeId: roomTypeId, // Set room type ID if found
-              roomType: args.roomType, // Store room type name as string (from prompt)
-              status: "PENDING",
-              totalPrice: totalPrice,
-              specialRequests: args.specialRequests || null
-            }
+            roomType: args.roomType, // Store room type name as string (from prompt)
+            status: "PENDING",
+            totalPrice: totalPrice,
+            specialRequests: args.specialRequests || null
+          }
           })
 
           // Update room count if room type was found
@@ -1679,26 +1679,63 @@ async function executeBuiltInTool(
         console.log("[create_reservation] Reservation created successfully:", reservation.id)
 
         // Update knowledge base room count asynchronously (don't wait for it)
-        if (foundRoomType && roomTypeId) {
-          const newTotalRooms = Math.max(0, foundRoomType.totalRooms - 1)
-          console.log("[create_reservation] Calling KB update function:", {
-            organizationId,
-            customerId: assignedUser.id,
-            roomTypeName: args.roomType, // Use args.roomType (from Retell) to match KB
-            newCount: newTotalRooms
-          })
-          updateKnowledgeBaseRoomCount(
-            organizationId,
-            assignedUser.id,
-            args.roomType, // Use args.roomType because KB room type names match Retell's roomType value
-            newTotalRooms
-          ).catch((err) => {
-            console.error("[create_reservation] Failed to update knowledge base:", err)
-            console.error("[create_reservation] KB update error details:", err.message, err.stack)
-            // Don't fail reservation creation if KB update fails
-          })
-        } else {
-          console.log("[create_reservation] Skipping KB update - room type not found:", { foundRoomType: !!foundRoomType, roomTypeId })
+        // First, get current count from KB, then decrease by 1
+        if (args.roomType) {
+          try {
+            // Find KB for this customer
+            const knowledgeBase = await prisma.knowledgeBase.findFirst({
+              where: {
+                organizationId,
+                customerId: assignedUser.id,
+                customer: {
+                  customerType: "HOTEL"
+                }
+              }
+            })
+
+            if (knowledgeBase && knowledgeBase.texts && knowledgeBase.texts.length > 0) {
+              try {
+                const hotelData = JSON.parse(knowledgeBase.texts[0])
+                const kbRoomTypes = hotelData.roomTypes || []
+                
+                // Find matching room type in KB (case-insensitive)
+                const matchedKBRoomType = kbRoomTypes.find((rt: any) => {
+                  return rt.name && rt.name.toLowerCase() === args.roomType.toLowerCase()
+                })
+
+                if (matchedKBRoomType) {
+                  const currentAdet = parseInt(matchedKBRoomType.adet || "0")
+                  const newAdet = Math.max(0, currentAdet - 1)
+                  
+                  console.log("[create_reservation] Updating KB room count:", {
+                    roomTypeName: args.roomType,
+                    currentAdet,
+                    newAdet
+                  })
+
+                  // Update KB asynchronously
+                  updateKnowledgeBaseRoomCount(
+                    organizationId,
+                    assignedUser.id,
+                    args.roomType,
+                    newAdet
+                  ).catch((err) => {
+                    console.error("[create_reservation] Failed to update knowledge base:", err)
+                    // Don't fail reservation creation if KB update fails
+                  })
+                } else {
+                  console.log("[create_reservation] Room type not found in KB:", args.roomType)
+                }
+              } catch (parseError) {
+                console.error("[create_reservation] Failed to parse KB JSON:", parseError)
+              }
+            } else {
+              console.log("[create_reservation] No knowledge base found for customer")
+            }
+          } catch (kbError) {
+            console.error("[create_reservation] Error checking KB:", kbError)
+            // Don't fail reservation creation if KB check fails
+          }
         }
 
         return {
