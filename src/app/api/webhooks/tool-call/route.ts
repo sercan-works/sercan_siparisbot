@@ -924,6 +924,7 @@ async function executeBuiltInTool(
 
         const pricingData = hotelData.pricing || {}
         let dailyRates = pricingData.dailyRates || []
+        const roomTypes = hotelData.roomTypes || []
 
         // Filter daily rates for the date range
         const filteredDailyRates = dailyRates.filter((rate: any) => {
@@ -937,6 +938,21 @@ async function executeBuiltInTool(
         filteredDailyRates.sort((a: any, b: any) => {
           return new Date(a.date).getTime() - new Date(b.date).getTime()
         })
+
+        // If roomType is specified, find matching room type from KB
+        let matchedRoomType = null
+        if (args.roomType) {
+          matchedRoomType = roomTypes.find((rt: any) => {
+            return rt.name && rt.name.toLowerCase() === args.roomType.toLowerCase()
+          })
+          
+          if (!matchedRoomType) {
+            // Try partial match
+            matchedRoomType = roomTypes.find((rt: any) => {
+              return rt.name && rt.name.toLowerCase().includes(args.roomType.toLowerCase())
+            })
+          }
+        }
 
         // Check if any rooms are available
         const hasAvailableRooms = filteredDailyRates.some((rate: any) => {
@@ -964,13 +980,26 @@ async function executeBuiltInTool(
         // Generate message
         let message = ""
         if (hasAvailableRooms && filteredDailyRates.length > 0) {
-          if (lowestPrice !== Infinity) {
-            message = `Evet, ${args.checkIn} - ${args.checkOut} tarihleri arasında müsaitliğimiz var. Fiyatlarımız gecelik ${lowestPrice} TL'den başlıyor.`
+          if (matchedRoomType) {
+            const availableRooms = matchedRoomType.adet || "0"
+            if (lowestPrice !== Infinity) {
+              message = `Evet, ${args.roomType} oda tipimiz ${args.checkIn} - ${args.checkOut} tarihleri arasında müsait. ${availableRooms} adet müsait oda var ve fiyatlarımız gecelik ${lowestPrice} TL'den başlıyor.`
+            } else {
+              message = `Evet, ${args.roomType} oda tipimiz ${args.checkIn} - ${args.checkOut} tarihleri arasında müsait. ${availableRooms} adet müsait oda var.`
+            }
           } else {
-            message = `Evet, ${args.checkIn} - ${args.checkOut} tarihleri arasında müsaitliğimiz var.`
+            if (lowestPrice !== Infinity) {
+              message = `Evet, ${args.checkIn} - ${args.checkOut} tarihleri arasında müsaitliğimiz var. Fiyatlarımız gecelik ${lowestPrice} TL'den başlıyor.`
+            } else {
+              message = `Evet, ${args.checkIn} - ${args.checkOut} tarihleri arasında müsaitliğimiz var.`
+            }
           }
         } else {
-          message = `Maalesef ${args.checkIn} - ${args.checkOut} tarihleri arasında istediğiniz kriterde boş odamız kalmadı.`
+          if (matchedRoomType) {
+            message = `Maalesef ${args.roomType} oda tipimiz ${args.checkIn} - ${args.checkOut} tarihleri arasında müsait değil.`
+          } else {
+            message = `Maalesef ${args.checkIn} - ${args.checkOut} tarihleri arasında istediğiniz kriterde boş odamız kalmadı.`
+          }
         }
 
         return {
@@ -980,6 +1009,12 @@ async function executeBuiltInTool(
             checkIn: args.checkIn,
             checkOut: args.checkOut
           },
+          roomType: matchedRoomType ? {
+            name: matchedRoomType.name,
+            availableRooms: matchedRoomType.adet || "0",
+            maxGuests: matchedRoomType.maxKisi || null,
+            features: matchedRoomType
+          } : null,
           pricing: {
             dailyRates: filteredDailyRates
           },
