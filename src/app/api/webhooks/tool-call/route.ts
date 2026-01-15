@@ -834,7 +834,7 @@ async function executeBuiltInTool(
       }
 
     case "check_availability":
-      // Check room availability directly (no internal fetch)
+      // Get all data between two dates (room types, reservations, availability)
       try {
         console.log("[check_availability] Starting with args:", JSON.stringify(args, null, 2))
         
@@ -886,120 +886,153 @@ async function executeBuiltInTool(
           throw new Error("No customer found for this bot")
         }
 
-        // Helper to check availability for a specific range
-        const checkRange = async (start: Date, end: Date) => {
-          // 1. Find rooms matching guest capacity, organizationId, and customerId
-          const roomTypes = await prisma.roomType.findMany({
-            where: {
-              organizationId,
-              customerId,
-              isActive: true,
-              maxGuests: { gte: args.guests },
-              name: args.roomType ? { contains: args.roomType, mode: "insensitive" } : undefined
+        // Parse dates
+        const startDate = new Date(args.checkIn)
+        startDate.setHours(0, 0, 0, 0)
+        const endDate = new Date(args.checkOut)
+        endDate.setHours(0, 0, 0, 0)
+
+        // Get all room types (filter by roomType if provided, and by guests capacity)
+        const roomTypes = await prisma.roomType.findMany({
+          where: {
+            organizationId,
+            customerId,
+            isActive: true,
+            maxGuests: { gte: args.guests },
+            name: args.roomType ? { contains: args.roomType, mode: "insensitive" } : undefined
+          },
+          orderBy: { name: "asc" }
+        })
+
+        // Get all reservations in date range
+        const reservations = await prisma.reservation.findMany({
+          where: {
+            organizationId,
+            customerId,
+            OR: [
+              { checkIn: { lte: endDate, gte: startDate } },
+              { checkOut: { lte: endDate, gte: startDate } },
+              { checkIn: { lte: startDate }, checkOut: { gte: endDate } }
+            ]
+          },
+          include: {
+            roomType: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          },
+          orderBy: { checkIn: "asc" }
+        })
+
+        // Get all blocked dates in range
+        const blockedDates = await prisma.roomAvailability.findMany({
+          where: {
+            organizationId,
+            customerId,
+            isBlocked: true,
+            date: { gte: startDate, lt: endDate }
+          },
+          include: {
+            roomType: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          },
+          orderBy: { date: "asc" }
+        })
+
+        // Process room types with availability details
+        const roomTypesWithDetails = await Promise.all(
+          roomTypes.map(async (roomType) => {
+            // Count reservations for this room type in date range
+            const roomReservations = reservations.filter(
+              (r) => r.roomTypeId === roomType.id && 
+              ["CONFIRMED", "CHECKED_IN"].includes(r.status)
+            )
+
+            // Count blocked dates for this room type
+            const roomBlockedDates = blockedDates.filter(
+              (b) => b.roomTypeId === roomType.id
+            )
+
+            // Calculate available rooms
+            const bookedRooms = roomReservations.length
+            const availableRooms = Math.max(0, roomType.totalRooms - bookedRooms)
+
+            return {
+              id: roomType.id,
+              name: roomType.name,
+              description: roomType.description || "",
+              totalRooms: roomType.totalRooms,
+              bookedRooms,
+              availableRooms,
+              maxGuests: roomType.maxGuests,
+              pricePerNight: roomType.pricePerNight,
+              features: roomType.features || [],
+              blockedDatesCount: roomBlockedDates.length,
+              blockedDates: roomBlockedDates.map((b) => b.date.toISOString().split('T')[0])
             }
           })
+        )
 
-          if (roomTypes.length === 0) return { available: false, rooms: [] }
+        // Format reservations for response
+        const formattedReservations = reservations.map((r) => ({
+          id: r.id,
+          roomTypeId: r.roomTypeId,
+          roomTypeName: r.roomType?.name || "Unknown",
+          checkIn: r.checkIn.toISOString().split('T')[0],
+          checkOut: r.checkOut.toISOString().split('T')[0],
+          guests: r.guests,
+          status: r.status,
+          guestName: r.guestName,
+          guestPhone: r.guestPhone,
+          totalPrice: r.totalPrice,
+          createdAt: r.createdAt.toISOString()
+        }))
 
-          const validRooms = []
+        // Format blocked dates for response
+        const formattedBlockedDates = blockedDates.map((b) => ({
+          id: b.id,
+          roomTypeId: b.roomTypeId,
+          roomTypeName: b.roomType?.name || "Unknown",
+          date: b.date.toISOString().split('T')[0],
+          reason: b.reason || ""
+        }))
 
-          for (const room of roomTypes) {
-            // Check blocked dates
-            const blocked = await prisma.roomAvailability.count({
-              where: {
-                roomTypeId: room.id,
-                isBlocked: true,
-                date: { gte: start, lt: end }
-              }
-            })
-            if (blocked > 0) continue
+        // Check if any rooms are available
+        const hasAvailableRooms = roomTypesWithDetails.some((r) => r.availableRooms > 0)
+        const availableRoomTypes = roomTypesWithDetails.filter((r) => r.availableRooms > 0)
 
-            // Check reservations
-            const bookings = await prisma.reservation.count({
-              where: {
-                roomTypeId: room.id,
-                status: { in: ["CONFIRMED", "CHECKED_IN"] },
-                OR: [
-                  { checkIn: { lte: end, gte: start } },
-                  { checkOut: { lte: end, gte: start } },
-                  { checkIn: { lte: start }, checkOut: { gte: end } }
-                ]
-              }
-            })
-
-            if (room.totalRooms - bookings > 0) {
-              validRooms.push({
-                name: room.name,
-                price: room.pricePerNight,
-                count: room.totalRooms - bookings
-              })
-            }
-          }
-
-          return { available: validRooms.length > 0, rooms: validRooms }
-        }
-
-        const startDate = new Date(args.checkIn)
-        const endDate = new Date(args.checkOut)
-
-        // Check requested dates
-        const primaryResult = await checkRange(startDate, endDate)
-
-        if (primaryResult.available) {
-          const lowestPrice = Math.min(...primaryResult.rooms.map((r: any) => r.price))
-          const message = `Evet, ${args.checkIn} girişli ${primaryResult.rooms.length} farklı oda tipimiz müsait. Fiyatlarımız gecelik ${lowestPrice} TL'den başlıyor.`
-          
-          return {
-            success: true,
-            available: true,
-            rooms: primaryResult.rooms,
-            message,
-            alternatives: [],
-            lowestPrice
-          }
-        }
-
-        // If not available, check alternatives (+/- 3 days)
-        const alternatives = []
-        for (let i = -3; i <= 3; i++) {
-          if (i === 0) continue // Skip original date
-
-          const altStart = new Date(startDate)
-          altStart.setDate(altStart.getDate() + i)
-
-          const altEnd = new Date(endDate)
-          altEnd.setDate(altEnd.getDate() + i)
-
-          // Skip past dates
-          if (altStart < new Date()) continue
-
-          const result = await checkRange(altStart, altEnd)
-          if (result.available) {
-            alternatives.push({
-              date: altStart.toISOString().split('T')[0],
-              rooms: result.rooms.map((r: any) => r.name).join(", ")
-            })
-          }
-
-          if (alternatives.length >= 3) break // Limit to 3 suggestions
-        }
-
-        let message = `Maalesef ${args.checkIn} - ${args.checkOut} tarihleri arasında istediğiniz kriterde boş odamız kalmadı.`
-
-        if (alternatives.length > 0) {
-          const altText = alternatives.map((a: any) => `${a.date} (${a.rooms})`).join(", ")
-          message += ` Ancak şu tarihlerde müsaitliğimiz var: ${altText}. Bu tarihlerden birini düşünür müsünüz?`
+        // Generate message
+        let message = ""
+        if (hasAvailableRooms) {
+          const lowestPrice = Math.min(...availableRoomTypes.map((r) => r.pricePerNight))
+          message = `Evet, ${args.checkIn} - ${args.checkOut} tarihleri arasında ${availableRoomTypes.length} farklı oda tipimiz müsait. Fiyatlarımız gecelik ${lowestPrice} TL'den başlıyor.`
         } else {
-          message += " Yakın tarihlerde de ne yazık ki doluyuz."
+          message = `Maalesef ${args.checkIn} - ${args.checkOut} tarihleri arasında istediğiniz kriterde boş odamız kalmadı.`
         }
 
         return {
           success: true,
-          available: false,
-          rooms: [],
-          message,
-          alternatives,
-          lowestPrice: null
+          available: hasAvailableRooms,
+          dateRange: {
+            checkIn: args.checkIn,
+            checkOut: args.checkOut
+          },
+          roomTypes: roomTypesWithDetails,
+          reservations: formattedReservations,
+          blockedDates: formattedBlockedDates,
+          summary: {
+            totalRoomTypes: roomTypesWithDetails.length,
+            availableRoomTypes: availableRoomTypes.length,
+            totalReservations: formattedReservations.length,
+            totalBlockedDates: formattedBlockedDates.length
+          },
+          message
         }
 
       } catch (err: any) {
