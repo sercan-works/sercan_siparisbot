@@ -320,12 +320,9 @@ https://siparisbot.vercel.app/api/webhooks/tool-call
 
 ## ⚙️ Retell LLM Yapılandırması
 
-### Otomatik Tool Injection
+### Manuel Tool Ekleme
 
-Sistem otomatik olarak tool'ları Retell LLM'e ekler:
-
-- **Hotel Bot'ları:** `check_availability`, `create_reservation`, `get_room_types`, `get_hotel_info`, `get_pricing_info`
-- **Restaurant Bot'ları:** `create_order`
+**ÖNEMLİ:** Tool'lar Retell Dashboard'dan manuel olarak eklenmelidir. Sistem otomatik olarak tool eklemez.
 
 ### Tool Call URL
 
@@ -341,26 +338,52 @@ Bu URL Retell LLM'in `tool_call_url` field'ına otomatik olarak eklenir.
 
 ## 📋 Retell Dashboard'da Tool Ekleme Adımları
 
-### Yöntem 1: Otomatik (Önerilen)
+### Adım Adım Manuel Ekleme
 
-Tool'lar sistem tarafından otomatik olarak eklenir. Bot oluştururken veya güncellerken:
+Her bot için tool'ları Retell Dashboard'dan manuel olarak eklemeniz gerekiyor:
 
-1. Admin panel'den bot oluşturun veya güncelleyin
-2. Sistem otomatik olarak tool'ları Retell'e ekler
-3. Retell dashboard'da tool'ları kontrol edin
+#### 1. Retell Dashboard'a Giriş
+1. [Retell Dashboard](https://dashboard.retellai.com)'a gidin
+2. Giriş yapın
 
-### Yöntem 2: Manuel Ekleme
+#### 2. LLM'i Bulun
+1. Sol menüden **LLM** bölümüne gidin
+2. Bot'unuzun LLM'ini bulun (LLM ID'yi admin panel'den görebilirsiniz)
+3. LLM'e tıklayın
 
-Eğer manuel olarak eklemek isterseniz:
+#### 3. Tool Call URL'i Kontrol Edin
+1. LLM ayarlarında **Tool Call URL** field'ını kontrol edin
+2. Şu URL olmalı: `https://siparisbot.vercel.app/api/webhooks/tool-call`
+3. Eğer yoksa veya yanlışsa, düzeltin
 
-1. Retell Dashboard'a gidin
-2. **LLM** bölümüne gidin
-3. Bot'unuzun LLM'ini seçin
-4. **Tools** sekmesine gidin
-5. **Add Tool** butonuna tıklayın
-6. Yukarıdaki tool tanımlarını kullanarak tool'u ekleyin
+#### 4. Tool'ları Ekleyin
 
-**ÖNEMLİ:** Manuel ekleme yaparsanız, sistem otomatik tool injection'ı devre dışı bırakabilir. Bu yüzden otomatik yöntemi kullanmanız önerilir.
+**Hotel Bot'ları için 5 tool ekleyin:**
+1. `check_availability`
+2. `create_reservation`
+3. `get_room_types`
+4. `get_hotel_info`
+5. `get_pricing_info`
+
+**Restaurant Bot'ları için 1 tool ekleyin:**
+1. `create_order`
+
+Her tool için:
+1. **Add Tool** veya **+ Tool** butonuna tıklayın
+2. Tool adını girin (yukarıdaki tool tanımlarından)
+3. Description'ı kopyalayın
+4. API Endpoint: `https://siparisbot.vercel.app/api/webhooks/tool-call`
+5. HTTP Method: `POST`
+6. Timeout: `120000` ms
+7. Headers: `Content-Type: application/json`
+8. **Payload: args only:** ✅ **AÇIK** (checked) - **ÇOK ÖNEMLİ!**
+9. Parameters (JSON Schema): Yukarıdaki tool tanımlarından ilgili JSON Schema'yı kopyalayın
+10. **Save** butonuna tıklayın
+
+#### 5. Tool'ları Kontrol Edin
+1. Tüm tool'ların eklendiğinden emin olun
+2. Her tool'un doğru yapılandırıldığını kontrol edin
+3. **Payload: args only** ayarının açık olduğundan emin olun
 
 ---
 

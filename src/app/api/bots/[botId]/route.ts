@@ -181,26 +181,9 @@ export async function PUT(
     // Update Retell LLM if prompt or model changed
     let finalTools = (existingBot.customTools as any[]) || []
 
-    // Auto-inject tool for Hotels
-    if (session.user.customerType === "HOTEL") {
-      // Filter out existing hotel tools to avoid duplicates
-      finalTools = finalTools.filter((t: any) => 
-        t.function?.name !== "check_availability" &&
-        t.function?.name !== "create_reservation" &&
-        t.function?.name !== "get_room_types" &&
-        t.function?.name !== "get_hotel_info" &&
-        t.function?.name !== "get_pricing_info"
-      )
-      finalTools.push(CHECK_AVAILABILITY_TOOL)
-      finalTools.push(CREATE_RESERVATION_TOOL)
-      finalTools.push(GET_ROOM_TYPES_TOOL)
-      finalTools.push(GET_HOTEL_INFO_TOOL)
-      finalTools.push(GET_PRICING_INFO_TOOL)
-    } else if (session.user.customerType === "RESTAURANT") {
-      // Filter out existing create_order to avoid duplicates
-      finalTools = finalTools.filter((t: any) => t.function?.name !== "create_order")
-      finalTools.push(CREATE_ORDER_TOOL)
-    }
+    // NOTE: Tools are now added manually via Retell Dashboard
+    // Keep existing tools from database, don't auto-inject
+    // Tools should be added manually in Retell Dashboard
 
     if ((data.generalPrompt || data.beginMessage || data.model || session.user.customerType === "HOTEL" || session.user.customerType === "RESTAURANT") && existingBot.retellLlmId) {
       // Get tool call webhook URL for tool execution
@@ -217,16 +200,13 @@ export async function PUT(
       if (data.beginMessage !== undefined) llmUpdateData.begin_message = data.beginMessage
       if (data.model) llmUpdateData.model = data.model
 
-      if (session.user.customerType === "HOTEL") {
-        llmUpdateData.general_tools = finalTools
-
-        // Auto-inject safety protocol if prompt is being updated
-        if (llmUpdateData.general_prompt) {
-          const safetyProtocol = `\n\n## RESERVATION PROTOCOL (STRICT)\nBefore calling 'create_reservation', you MUST verbally confirm the details with the user: "So I have a request for [Guest Name] for [Room Type] from [Check-in] to [Check-out]. Is this correct?". Only proceed if they say YES.`
-          llmUpdateData.general_prompt += safetyProtocol
-        }
-      } else if (session.user.customerType === "RESTAURANT") {
-        llmUpdateData.general_tools = finalTools
+      // NOTE: Tools are now added manually via Retell Dashboard
+      // Only update tool_call_url, don't modify tools
+      // Auto-inject safety protocol if prompt is being updated
+      if (session.user.customerType === "HOTEL" && llmUpdateData.general_prompt) {
+        const safetyProtocol = `\n\n## RESERVATION PROTOCOL (STRICT)\nBefore calling 'create_reservation', you MUST verbally confirm the details with the user: "So I have a request for [Guest Name] for [Room Type] from [Check-in] to [Check-out]. Is this correct?". Only proceed if they say YES.`
+        llmUpdateData.general_prompt += safetyProtocol
+      } else if (session.user.customerType === "RESTAURANT" && llmUpdateData.general_prompt) {
 
         // Auto-inject safety protocol if prompt is being updated
         if (llmUpdateData.general_prompt) {
