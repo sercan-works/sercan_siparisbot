@@ -20,9 +20,12 @@ interface DailyMetric {
 interface MetricsChartProps {
   dailyBreakdown: DailyMetric[]
   isLoading?: boolean
+  customerType?: "HOTEL" | "RESTAURANT" | null
 }
 
-export default function MetricsChart({ dailyBreakdown, isLoading }: MetricsChartProps) {
+export default function MetricsChart({ dailyBreakdown, isLoading, customerType }: MetricsChartProps) {
+  const isHotel = customerType === "HOTEL"
+  const isRestaurant = customerType === "RESTAURANT"
   if (isLoading) {
     return (
       <Card>
@@ -53,10 +56,14 @@ export default function MetricsChart({ dailyBreakdown, isLoading }: MetricsChart
 
   // Find max value for scaling
   const maxValue = Math.max(
-    ...dailyBreakdown.map(d => Math.max(
-      d.metrics.totalCalls,
-      d.metrics.successfulReservations + d.metrics.successfulOrders
-    ))
+    ...dailyBreakdown.map(d => {
+      const successCount = isHotel 
+        ? d.metrics.successfulReservations 
+        : isRestaurant 
+        ? d.metrics.successfulOrders 
+        : d.metrics.successfulReservations + d.metrics.successfulOrders
+      return Math.max(d.metrics.totalCalls, successCount)
+    })
   )
 
   return (
@@ -75,7 +82,14 @@ export default function MetricsChart({ dailyBreakdown, isLoading }: MetricsChart
               const date = new Date(day.date)
               const totalHeight = 200
               const callsHeight = (day.metrics.totalCalls / maxValue) * totalHeight
-              const successHeight = ((day.metrics.successfulReservations + day.metrics.successfulOrders) / maxValue) * totalHeight
+              
+              const successCount = isHotel 
+                ? day.metrics.successfulReservations 
+                : isRestaurant 
+                ? day.metrics.successfulOrders 
+                : day.metrics.successfulReservations + day.metrics.successfulOrders
+              
+              const successHeight = (successCount / maxValue) * totalHeight
               
               return (
                 <div key={day.date} className="flex items-end gap-2">
@@ -100,10 +114,10 @@ export default function MetricsChart({ dailyBreakdown, isLoading }: MetricsChart
                       <div
                         className="bg-green-500 rounded-t"
                         style={{ height: `${successHeight}px` }}
-                        title={`Başarılı: ${day.metrics.successfulReservations + day.metrics.successfulOrders}`}
+                        title={`Başarılı: ${successCount}`}
                       ></div>
                       <div className="text-xs text-center mt-1 text-green-600">
-                        {day.metrics.successfulReservations + day.metrics.successfulOrders}
+                        {successCount}
                       </div>
                     </div>
                   </div>
@@ -131,11 +145,19 @@ export default function MetricsChart({ dailyBreakdown, isLoading }: MetricsChart
                 <tr className="border-b">
                   <th className="text-left p-2">Tarih</th>
                   <th className="text-right p-2">Toplam</th>
-                  <th className="text-right p-2">Rezervasyon</th>
-                  <th className="text-right p-2">Sipariş</th>
+                  {(!customerType || isHotel) && (
+                    <th className="text-right p-2">Rezervasyon</th>
+                  )}
+                  {(!customerType || isRestaurant) && (
+                    <th className="text-right p-2">Sipariş</th>
+                  )}
                   <th className="text-right p-2">Fiyat Yüksek</th>
-                  <th className="text-right p-2">Yer Yok</th>
-                  <th className="text-right p-2">Ürün Yok</th>
+                  {(!customerType || isHotel) && (
+                    <th className="text-right p-2">Yer Yok</th>
+                  )}
+                  {(!customerType || isRestaurant) && (
+                    <th className="text-right p-2">Ürün Yok</th>
+                  )}
                   <th className="text-right p-2">Dönüşüm %</th>
                 </tr>
               </thead>
@@ -146,11 +168,19 @@ export default function MetricsChart({ dailyBreakdown, isLoading }: MetricsChart
                     <tr key={day.date} className="border-b hover:bg-gray-50">
                       <td className="p-2">{format(date, "dd MMM yyyy", { locale: tr })}</td>
                       <td className="text-right p-2 font-medium">{day.metrics.totalCalls}</td>
-                      <td className="text-right p-2 text-green-600">{day.metrics.successfulReservations}</td>
-                      <td className="text-right p-2 text-blue-600">{day.metrics.successfulOrders}</td>
+                      {(!customerType || isHotel) && (
+                        <td className="text-right p-2 text-green-600">{day.metrics.successfulReservations}</td>
+                      )}
+                      {(!customerType || isRestaurant) && (
+                        <td className="text-right p-2 text-blue-600">{day.metrics.successfulOrders}</td>
+                      )}
                       <td className="text-right p-2 text-orange-600">{day.metrics.priceTooHigh}</td>
-                      <td className="text-right p-2 text-red-600">{day.metrics.noRoomAvailable}</td>
-                      <td className="text-right p-2 text-yellow-600">{day.metrics.productUnavailable}</td>
+                      {(!customerType || isHotel) && (
+                        <td className="text-right p-2 text-red-600">{day.metrics.noRoomAvailable}</td>
+                      )}
+                      {(!customerType || isRestaurant) && (
+                        <td className="text-right p-2 text-yellow-600">{day.metrics.productUnavailable}</td>
+                      )}
                       <td className="text-right p-2 font-medium">{day.metrics.conversionRate.toFixed(1)}%</td>
                     </tr>
                   )

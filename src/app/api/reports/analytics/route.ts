@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { organizationId, role, id: userId } = session.user
+    const { organizationId, role, id: userId, customerType } = session.user
     const { searchParams } = new URL(req.url)
     
     const preset = searchParams.get("preset") as DatePreset | null
@@ -175,6 +175,7 @@ export async function GET(req: NextRequest) {
       noRoomAvailable,
       productUnavailable,
       conversionRate: Math.round(conversionRate * 100) / 100,
+      customerType: customerType || null,
       dateRange: {
         start: format(dateRange.start, "yyyy-MM-dd"),
         end: format(dateRange.end, "yyyy-MM-dd")

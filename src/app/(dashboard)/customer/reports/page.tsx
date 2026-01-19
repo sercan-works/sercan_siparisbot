@@ -16,6 +16,7 @@ interface AnalyticsData {
   noRoomAvailable: number
   productUnavailable: number
   conversionRate: number
+  customerType?: "HOTEL" | "RESTAURANT" | null
   dateRange: {
     start: string
     end: string
@@ -130,7 +131,11 @@ export default function ReportsPage() {
           <MetricsDashboard data={data} isLoading={isLoading} />
           
           <div className="mt-6">
-            <MetricsChart dailyBreakdown={data.dailyBreakdown} isLoading={isLoading} />
+            <MetricsChart 
+              dailyBreakdown={data.dailyBreakdown} 
+              isLoading={isLoading}
+              customerType={data.customerType}
+            />
           </div>
         </>
       )}
