@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { analyzeTranscript, checkHasReservation, checkHasOrder } from "@/lib/call-metrics-analyzer"
 import crypto from "crypto"
 
 export const dynamic = "force-dynamic"
@@ -419,6 +420,24 @@ async function handleCallAnalyzed(
       }
     }
 
+    // Analyze transcript for metrics
+    const transcriptMetrics = analyzeTranscript(transcript)
+    
+    // Check if reservation or order was created
+    const hasReservation = await checkHasReservation(callId, tx)
+    const hasOrder = await checkHasOrder(callId, tx)
+    
+    // Determine final call outcome
+    let finalOutcome = transcriptMetrics.callOutcome
+    if (!finalOutcome) {
+      // If no outcome from transcript, check if successful
+      if (hasReservation || hasOrder) {
+        finalOutcome = "SUCCESS"
+      } else if (analysis?.call_successful === false) {
+        finalOutcome = "OTHER"
+      }
+    }
+
     // Create analytics
     await tx.callAnalytics.upsert({
       where: { callId },
@@ -428,6 +447,11 @@ async function handleCallAnalyzed(
         sentiment: analysis?.sentiment || null,
         successEvaluation: analysis?.call_successful?.toString() || null,
         customAnalysis: analysis?.custom_analysis_data || null,
+        // Call outcome metrics
+        callOutcome: finalOutcome,
+        hasReservation: hasReservation,
+        hasOrder: hasOrder,
+        rejectionReason: transcriptMetrics.rejectionReason,
         // E2E latency
         e2eLatencyP50: latency?.e2e_latency?.p50 || null,
         e2eLatencyP90: latency?.e2e_latency?.p90 || null,
@@ -464,6 +488,11 @@ async function handleCallAnalyzed(
         sentiment: analysis?.sentiment || null,
         successEvaluation: analysis?.call_successful?.toString() || null,
         customAnalysis: analysis?.custom_analysis_data || null,
+        // Update call outcome metrics (only if not already set by tool calls)
+        callOutcome: finalOutcome || undefined,
+        hasReservation: hasReservation,
+        hasOrder: hasOrder,
+        rejectionReason: transcriptMetrics.rejectionReason || undefined,
         // E2E latency
         e2eLatencyP50: latency?.e2e_latency?.p50 || null,
         e2eLatencyP90: latency?.e2e_latency?.p90 || null,

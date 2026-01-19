@@ -376,6 +376,12 @@ model CallAnalytics {
   successEvaluation String?
   customAnalysis    Json?
 
+  // Call Outcome Metrics
+  callOutcome       String?  // "SUCCESS", "PRICE_TOO_HIGH", "NO_ROOM_AVAILABLE", "PRODUCT_UNAVAILABLE", "OTHER"
+  hasReservation    Boolean  @default(false)
+  hasOrder          Boolean  @default(false)
+  rejectionReason   String?  @db.Text
+
   // E2E Latency Metrics
   e2eLatencyP50     Float?
   e2eLatencyP90     Float?
@@ -421,6 +427,9 @@ model CallAnalytics {
   @@index([callId])
   @@index([sentiment])
   @@index([successEvaluation])
+  @@index([callOutcome])
+  @@index([hasReservation])
+  @@index([hasOrder])
 }
 
 // ============================================

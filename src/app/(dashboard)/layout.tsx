@@ -13,7 +13,8 @@ import {
   Menu,
   X,
   Calendar,
-  Sparkles
+  Sparkles,
+  BarChart3
 } from "lucide-react"
 
 export const dynamic = "force-dynamic"
@@ -41,6 +42,7 @@ export default async function DashboardLayout({
   const customerType = session.user.customerType || "RESTAURANT"
 
   const customerNavigation = [
+    { name: 'Raporlar', href: `${basePath}/reports`, icon: BarChart3 },
     ...(customerType === "RESTAURANT"
       ? [{ name: 'Siparişler', href: `${basePath}/orders`, icon: FileText }]
       : [

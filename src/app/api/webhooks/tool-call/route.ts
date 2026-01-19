@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { callRetellApi } from "@/lib/retell"
 import { updateKnowledgeBaseRoomCount } from "@/lib/knowledge-base-updater"
+import { analyzeToolCallResult } from "@/lib/call-metrics-analyzer"
 import crypto from "crypto"
 
 export const dynamic = "force-dynamic"
@@ -773,6 +774,28 @@ async function executeBuiltInTool(
           verified: !!verifyOrder
         })
 
+        // Update metrics for successful order
+        if (call?.id) {
+          try {
+            await prisma.callAnalytics.upsert({
+              where: { callId: call.id },
+              create: {
+                callId: call.id,
+                callOutcome: "SUCCESS",
+                hasReservation: false,
+                hasOrder: true
+              },
+              update: {
+                callOutcome: "SUCCESS",
+                hasOrder: true
+              }
+            })
+          } catch (metricsError) {
+            console.error("[create_order] Failed to update metrics:", metricsError)
+            // Don't fail the tool call if metrics update fails
+          }
+        }
+
         return {
           success: true,
           order_id: newOrder.id,
@@ -782,6 +805,36 @@ async function executeBuiltInTool(
       } catch (err: any) {
         console.error("[create_order] Failed to create order:", err)
         console.error("[create_order] Error stack:", err.stack)
+        
+        // Update metrics for failed order
+        if (call?.id) {
+          try {
+            const errorResult = {
+              error: true,
+              message: `Sipariş oluşturulurken bir hata oluştu: ${err.message || err}`
+            }
+            const metrics = analyzeToolCallResult("create_order", errorResult)
+            await prisma.callAnalytics.upsert({
+              where: { callId: call.id },
+              create: {
+                callId: call.id,
+                callOutcome: metrics.callOutcome,
+                rejectionReason: metrics.rejectionReason,
+                hasReservation: false,
+                hasOrder: false
+              },
+              update: {
+                callOutcome: metrics.callOutcome,
+                rejectionReason: metrics.rejectionReason,
+                hasOrder: false
+              }
+            })
+          } catch (metricsError) {
+            console.error("[create_order] Failed to update error metrics:", metricsError)
+            // Don't fail the tool call if metrics update fails
+          }
+        }
+        
         return {
           error: true,
           message: `Sipariş oluşturulurken bir hata oluştu: ${err.message || err}`
@@ -980,6 +1033,30 @@ async function executeBuiltInTool(
             }
           }
         })
+
+        // Update metrics if no rooms available
+        if (!hasAvailableRooms && call?.id) {
+          try {
+            const metrics = analyzeToolCallResult("check_availability", { available: false })
+            await prisma.callAnalytics.upsert({
+              where: { callId: call.id },
+              create: {
+                callId: call.id,
+                callOutcome: metrics.callOutcome,
+                rejectionReason: metrics.rejectionReason,
+                hasReservation: false,
+                hasOrder: false
+              },
+              update: {
+                callOutcome: metrics.callOutcome,
+                rejectionReason: metrics.rejectionReason
+              }
+            })
+          } catch (metricsError) {
+            console.error("[check_availability] Failed to update metrics:", metricsError)
+            // Don't fail the tool call if metrics update fails
+          }
+        }
 
         // Return data only - LLM will form its own natural response message
         return {
@@ -1814,6 +1891,28 @@ async function executeBuiltInTool(
           }
         }
 
+        // Update metrics for successful reservation
+        if (call?.id) {
+          try {
+            await prisma.callAnalytics.upsert({
+              where: { callId: call.id },
+              create: {
+                callId: call.id,
+                callOutcome: "SUCCESS",
+                hasReservation: true,
+                hasOrder: false
+              },
+              update: {
+                callOutcome: "SUCCESS",
+                hasReservation: true
+              }
+            })
+          } catch (metricsError) {
+            console.error("[create_reservation] Failed to update metrics:", metricsError)
+            // Don't fail the tool call if metrics update fails
+          }
+        }
+
         return {
           success: true,
           confirmationCode: confirmationCode,
@@ -1824,6 +1923,36 @@ async function executeBuiltInTool(
       } catch (err: any) {
         console.error("[create_reservation] Failed to create reservation:", err)
         console.error("[create_reservation] Error stack:", err.stack)
+        
+        // Update metrics for failed reservation
+        if (call?.id) {
+          try {
+            const errorResult = {
+              error: true,
+              message: `Rezervasyon oluşturulurken bir hata oluştu: ${err.message || err}`
+            }
+            const metrics = analyzeToolCallResult("create_reservation", errorResult)
+            await prisma.callAnalytics.upsert({
+              where: { callId: call.id },
+              create: {
+                callId: call.id,
+                callOutcome: metrics.callOutcome,
+                rejectionReason: metrics.rejectionReason,
+                hasReservation: false,
+                hasOrder: false
+              },
+              update: {
+                callOutcome: metrics.callOutcome,
+                rejectionReason: metrics.rejectionReason,
+                hasReservation: false
+              }
+            })
+          } catch (metricsError) {
+            console.error("[create_reservation] Failed to update error metrics:", metricsError)
+            // Don't fail the tool call if metrics update fails
+          }
+        }
+        
         return {
           error: true,
           message: `Rezervasyon oluşturulurken bir hata oluştu: ${err.message || err}`
