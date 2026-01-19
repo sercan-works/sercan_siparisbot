@@ -87,7 +87,7 @@ export default function DateRangeSelector({
                 mode="single"
                 selected={startDate || undefined}
                 onSelect={(date) => {
-                  onDateChange(date, endDate)
+                  onDateChange(date ?? null, endDate)
                   setStartDateOpen(false)
                 }}
                 initialFocus
@@ -121,11 +121,12 @@ export default function DateRangeSelector({
                 mode="single"
                 selected={endDate || undefined}
                 onSelect={(date) => {
-                  if (date && startDate && date < startDate) {
+                  const selectedDate = date ?? null
+                  if (selectedDate && startDate && selectedDate < startDate) {
                     // If end date is before start date, swap them
-                    onDateChange(date, startDate)
+                    onDateChange(selectedDate, startDate)
                   } else {
-                    onDateChange(startDate, date)
+                    onDateChange(startDate, selectedDate)
                   }
                   setEndDateOpen(false)
                 }}
