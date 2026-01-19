@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Phone, CalendarCheck, ShoppingCart, DollarSign, XCircle, Package, TrendingUp } from "lucide-react"
+import { Phone, CalendarCheck, ShoppingCart, DollarSign, XCircle, Package, TrendingUp, Smile } from "lucide-react"
 
 interface MetricsData {
   totalCalls: number
@@ -11,6 +11,9 @@ interface MetricsData {
   noRoomAvailable: number
   productUnavailable: number
   conversionRate: number
+  customerSatisfactionRate?: number
+  happyCalls?: number
+  unhappyCalls?: number
   customerType?: "HOTEL" | "RESTAURANT" | null
 }
 
@@ -53,7 +56,7 @@ export default function MetricsDashboard({ data, isLoading }: MetricsDashboardPr
   return (
     <div className="space-y-6">
       {/* Main Metrics Cards */}
-      <div className={`grid grid-cols-1 md:grid-cols-2 ${isHotel || isRestaurant ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} gap-4`}>
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${isHotel || isRestaurant ? 'lg:grid-cols-3' : 'lg:grid-cols-4'} xl:grid-cols-5 gap-4`}>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Toplam Arama</CardTitle>
@@ -108,6 +111,26 @@ export default function MetricsDashboard({ data, isLoading }: MetricsDashboardPr
             <div className="text-2xl font-bold text-purple-600">{data.conversionRate.toFixed(1)}%</div>
             <p className="text-xs text-muted-foreground mt-1">
               Başarılı işlem / Toplam arama
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Customer Satisfaction Rate */}
+        <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Müşteri Mutluluk Oranı</CardTitle>
+            <Smile className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {data.customerSatisfactionRate !== undefined 
+                ? `${data.customerSatisfactionRate.toFixed(1)}%`
+                : "N/A"}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {data.happyCalls !== undefined && data.totalCalls > 0
+                ? `${data.happyCalls} mutlu / ${data.totalCalls} toplam`
+                : "Mutlu müşteri oranı"}
             </p>
           </CardContent>
         </Card>
@@ -167,7 +190,7 @@ export default function MetricsDashboard({ data, isLoading }: MetricsDashboardPr
           <CardTitle className="text-lg">Özet</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
             <div>
               <p className="text-muted-foreground">Toplam Başarılı</p>
               <p className="text-2xl font-bold text-green-600">{totalSuccessful}</p>
@@ -190,6 +213,16 @@ export default function MetricsDashboard({ data, isLoading }: MetricsDashboardPr
                 {data.totalCalls > 0 
                   ? ((totalRejections / data.totalCalls) * 100).toFixed(1) 
                   : "0"}%
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Mutluluk Oranı</p>
+              <p className="text-2xl font-bold text-emerald-600">
+                {data.customerSatisfactionRate !== undefined
+                  ? `${data.customerSatisfactionRate.toFixed(1)}%`
+                  : data.totalCalls > 0 
+                    ? ((totalSuccessful / data.totalCalls) * 100).toFixed(1)
+                    : "0"}%
               </p>
             </div>
           </div>

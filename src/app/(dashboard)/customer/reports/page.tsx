@@ -18,6 +18,9 @@ interface AnalyticsData {
   noRoomAvailable: number
   productUnavailable: number
   conversionRate: number
+  customerSatisfactionRate?: number
+  happyCalls?: number
+  unhappyCalls?: number
   customerType?: "HOTEL" | "RESTAURANT" | null
   dateRange: {
     start: string
@@ -33,6 +36,7 @@ interface AnalyticsData {
       noRoomAvailable: number
       productUnavailable: number
       conversionRate: number
+      customerSatisfactionRate?: number
     }
   }>
 }

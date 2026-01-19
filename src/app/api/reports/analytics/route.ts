@@ -128,6 +128,39 @@ export async function GET(req: NextRequest) {
     const totalSuccessful = successfulReservations + successfulOrders
     const conversionRate = totalCalls > 0 ? (totalSuccessful / totalCalls) * 100 : 0
 
+    // Calculate customer satisfaction (happiness) rate
+    // Positive sentiment OR successful reservation/order = happy
+    // Negative sentiment OR rejection = unhappy
+    // Neutral sentiment = neutral (counted as neither happy nor unhappy)
+    const happyCalls = calls.filter(call => {
+      const sentiment = call.analytics?.sentiment?.toLowerCase()
+      const hasSuccess = call.reservation !== null || call.order !== null
+      const hasRejection = call.analytics?.callOutcome && 
+        ["PRICE_TOO_HIGH", "NO_ROOM_AVAILABLE", "PRODUCT_UNAVAILABLE", "OTHER_REJECTION"].includes(call.analytics.callOutcome)
+      
+      // Happy if: positive sentiment OR (successful AND not rejected)
+      if (sentiment === "positive" || (hasSuccess && !hasRejection)) {
+        return true
+      }
+      // Also happy if successful and no negative sentiment
+      if (hasSuccess && sentiment !== "negative") {
+        return true
+      }
+      return false
+    }).length
+
+    const unhappyCalls = calls.filter(call => {
+      const sentiment = call.analytics?.sentiment?.toLowerCase()
+      const hasRejection = call.analytics?.callOutcome && 
+        ["PRICE_TOO_HIGH", "NO_ROOM_AVAILABLE", "PRODUCT_UNAVAILABLE", "OTHER_REJECTION"].includes(call.analytics.callOutcome)
+      
+      // Unhappy if: negative sentiment OR rejected
+      return sentiment === "negative" || hasRejection
+    }).length
+
+    // Customer satisfaction rate = (happy calls / total calls) * 100
+    const customerSatisfactionRate = totalCalls > 0 ? (happyCalls / totalCalls) * 100 : 0
+
     // Daily breakdown
     const days = eachDayOfInterval({ start: dateRange.start, end: dateRange.end })
     const dailyBreakdown = days.map(day => {
@@ -150,6 +183,22 @@ export async function GET(req: NextRequest) {
       const dayProductUnavailable = dayCalls.filter(call => 
         call.analytics?.callOutcome === "PRODUCT_UNAVAILABLE"
       ).length
+
+      // Calculate daily customer satisfaction
+      const dayHappyCalls = dayCalls.filter(call => {
+        const sentiment = call.analytics?.sentiment?.toLowerCase()
+        const hasSuccess = call.reservation !== null || call.order !== null
+        const hasRejection = call.analytics?.callOutcome && 
+          ["PRICE_TOO_HIGH", "NO_ROOM_AVAILABLE", "PRODUCT_UNAVAILABLE", "OTHER_REJECTION"].includes(call.analytics.callOutcome)
+        
+        if (sentiment === "positive" || (hasSuccess && !hasRejection)) {
+          return true
+        }
+        if (hasSuccess && sentiment !== "negative") {
+          return true
+        }
+        return false
+      }).length
       
       return {
         date: format(day, "yyyy-MM-dd"),
@@ -162,6 +211,9 @@ export async function GET(req: NextRequest) {
           productUnavailable: dayProductUnavailable,
           conversionRate: dayCalls.length > 0 
             ? ((dayReservations + dayOrders) / dayCalls.length) * 100 
+            : 0,
+          customerSatisfactionRate: dayCalls.length > 0
+            ? (dayHappyCalls / dayCalls.length) * 100
             : 0
         }
       }
@@ -175,6 +227,9 @@ export async function GET(req: NextRequest) {
       noRoomAvailable,
       productUnavailable,
       conversionRate: Math.round(conversionRate * 100) / 100,
+      customerSatisfactionRate: Math.round(customerSatisfactionRate * 100) / 100,
+      happyCalls,
+      unhappyCalls,
       customerType: customerType || null,
       dateRange: {
         start: format(dateRange.start, "yyyy-MM-dd"),

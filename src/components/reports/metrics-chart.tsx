@@ -15,6 +15,7 @@ interface DailyMetric {
     noRoomAvailable: number
     productUnavailable: number
     conversionRate: number
+    customerSatisfactionRate?: number
   }
 }
 
@@ -85,6 +86,7 @@ export default function MetricsChart({ dailyBreakdown, isLoading, customerType }
                   <th className="text-right p-2">Ürün Yok</th>
                 )}
                 <th className="text-right p-2">Dönüşüm %</th>
+                <th className="text-right p-2">Mutluluk %</th>
               </tr>
             </thead>
             <tbody>
@@ -108,6 +110,11 @@ export default function MetricsChart({ dailyBreakdown, isLoading, customerType }
                       <td className="text-right p-2 text-yellow-600">{day.metrics.productUnavailable}</td>
                     )}
                     <td className="text-right p-2 font-medium">{day.metrics.conversionRate.toFixed(1)}%</td>
+                    <td className="text-right p-2 font-medium text-green-600">
+                      {day.metrics.customerSatisfactionRate !== undefined 
+                        ? `${day.metrics.customerSatisfactionRate.toFixed(1)}%`
+                        : "-"}
+                    </td>
                   </tr>
                 )
               })}
