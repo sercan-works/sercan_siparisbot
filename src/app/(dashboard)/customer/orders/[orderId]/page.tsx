@@ -19,7 +19,6 @@ interface Order {
   totalAmount: number | null
   deliveryAddress: string | null
   notes: string | null
-  paymentMethod: "CARD" | "CASH" | null
   status: OrderStatus
   createdAt: string
   completedAt: string | null
@@ -179,20 +178,6 @@ export default function OrderDetailPage() {
                 <div>
                   <p className="text-sm text-gray-600">Teslimat Adresi</p>
                   <p className="font-semibold">{order.deliveryAddress}</p>
-                </div>
-              </div>
-            )}
-            {order.paymentMethod && (
-              <div className="flex items-center gap-3">
-                <div>
-                  <p className="text-sm text-gray-600">Ödeme Şekli</p>
-                  <Badge className={
-                    order.paymentMethod === "CARD" 
-                      ? "bg-blue-500 text-white" 
-                      : "bg-green-500 text-white"
-                  }>
-                    {order.paymentMethod === "CARD" ? "💳 Kart" : "💵 Nakit"}
-                  </Badge>
                 </div>
               </div>
             )}

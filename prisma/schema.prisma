@@ -479,11 +479,6 @@ enum OrderStatus {
   CANCELLED     // İptal
 }
 
-enum PaymentMethod {
-  CARD          // Kart ile ödeme
-  CASH          // Nakit ödeme
-}
-
 model Order {
   id              String      @id @default(cuid())
   customerId      String      // Restaurant/Hotel owner (User)
@@ -497,7 +492,6 @@ model Order {
   totalAmount     Float?
   deliveryAddress String?     // Teslimat adresi
   notes           String?     @db.Text
-  paymentMethod   PaymentMethod?  // Ödeme şekli
 
   // Status Tracking
   status          OrderStatus @default(PENDING)

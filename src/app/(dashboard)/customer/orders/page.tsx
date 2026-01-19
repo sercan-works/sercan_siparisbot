@@ -25,7 +25,6 @@ interface Order {
   totalAmount: number | null
   deliveryAddress: string | null
   notes: string | null
-  paymentMethod: "CARD" | "CASH" | null
   status: OrderStatus
   createdAt: string
   completedAt: string | null
@@ -574,19 +573,6 @@ export default function LiveOrdersPage() {
                           </div>
                         )}
 
-                        {/* Ödeme Tipi */}
-                        {order.paymentMethod && (
-                          <div className="pt-2">
-                            <Badge variant="outline" className={
-                              order.paymentMethod === "CARD" 
-                                ? "bg-blue-50 text-blue-700 border-blue-200" 
-                                : "bg-green-50 text-green-700 border-green-200"
-                            }>
-                              {order.paymentMethod === "CARD" ? "💳 Kart" : "💵 Nakit"}
-                            </Badge>
-                          </div>
-                        )}
-
                         {/* Tutar */}
                         {order.totalAmount && (
                           <div className="pt-2 border-t">
@@ -729,19 +715,6 @@ export default function LiveOrdersPage() {
                           <div>
                             <h4 className="font-semibold text-sm mb-2">Notlar:</h4>
                             <p className="text-sm text-gray-700">{order.notes}</p>
-                          </div>
-                        )}
-
-                        {/* Ödeme Tipi */}
-                        {order.paymentMethod && (
-                          <div className="pt-2">
-                            <Badge variant="outline" className={
-                              order.paymentMethod === "CARD" 
-                                ? "bg-blue-50 text-blue-700 border-blue-200" 
-                                : "bg-green-50 text-green-700 border-green-200"
-                            }>
-                              {order.paymentMethod === "CARD" ? "💳 Kart" : "💵 Nakit"}
-                            </Badge>
                           </div>
                         )}
 
