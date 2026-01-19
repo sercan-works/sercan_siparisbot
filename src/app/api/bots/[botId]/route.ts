@@ -10,7 +10,8 @@ import {
   CREATE_ORDER_TOOL,
   GET_ROOM_TYPES_TOOL,
   GET_HOTEL_INFO_TOOL,
-  GET_PRICING_INFO_TOOL
+  GET_PRICING_INFO_TOOL,
+  GET_RESTAURANT_INFO_TOOL
 } from "@/lib/tools"
 import { getRetellApiKey } from "@/lib/retell"
 import { updateBotPromptWithPricingPrompt } from "@/lib/bot-prompt-helper"
@@ -182,9 +183,36 @@ export async function PUT(
     // Update Retell LLM if prompt or model changed
     let finalTools = (existingBot.customTools as any[]) || []
 
-    // NOTE: Tools are now added manually via Retell Dashboard
-    // Keep existing tools from database, don't auto-inject
-    // Tools should be added manually in Retell Dashboard
+    // Auto-inject tools for restaurant bots if customTools is null or empty
+    if (session.user.customerType === "RESTAURANT") {
+      const hasGetRestaurantInfo = finalTools.some((t: any) => t.function?.name === "get_restaurant_info")
+      const hasCreateOrder = finalTools.some((t: any) => t.function?.name === "create_order")
+      
+      if (!hasGetRestaurantInfo) {
+        finalTools.push(GET_RESTAURANT_INFO_TOOL)
+      }
+      if (!hasCreateOrder) {
+        finalTools.push(CREATE_ORDER_TOOL)
+      }
+    }
+
+    // Auto-inject tools for hotel bots if customTools is null or empty
+    if (session.user.customerType === "HOTEL") {
+      const requiredTools = [
+        { name: "check_availability", tool: CHECK_AVAILABILITY_TOOL },
+        { name: "create_reservation", tool: CREATE_RESERVATION_TOOL },
+        { name: "get_room_types", tool: GET_ROOM_TYPES_TOOL },
+        { name: "get_hotel_info", tool: GET_HOTEL_INFO_TOOL },
+        { name: "get_pricing_info", tool: GET_PRICING_INFO_TOOL }
+      ]
+      
+      requiredTools.forEach(({ name, tool }) => {
+        const hasTool = finalTools.some((t: any) => t.function?.name === name)
+        if (!hasTool) {
+          finalTools.push(tool)
+        }
+      })
+    }
 
     if ((data.generalPrompt || data.beginMessage || data.model || session.user.customerType === "HOTEL" || session.user.customerType === "RESTAURANT") && existingBot.retellLlmId) {
       // Get tool call webhook URL for tool execution

@@ -404,7 +404,8 @@ export async function POST(req: NextRequest) {
       "get_room_types",
       "get_hotel_info",
       "get_pricing_info",
-      "get_price_rules"
+      "get_price_rules",
+      "get_restaurant_info"
     ]
 
     if (!toolDef && finalToolNameToUse && builtInToolNames.includes(finalToolNameToUse)) {
@@ -419,7 +420,8 @@ export async function POST(req: NextRequest) {
           GET_ROOM_TYPES_TOOL,
           GET_HOTEL_INFO_TOOL,
           GET_PRICING_INFO_TOOL,
-          GET_PRICE_RULES_TOOL
+          GET_PRICE_RULES_TOOL,
+          GET_RESTAURANT_INFO_TOOL
         } = await import("@/lib/tools")
         
         let builtInTool = null
@@ -437,6 +439,8 @@ export async function POST(req: NextRequest) {
           builtInTool = GET_PRICING_INFO_TOOL
         } else if (finalToolNameToUse === "get_price_rules") {
           builtInTool = GET_PRICE_RULES_TOOL
+        } else if (finalToolNameToUse === "get_restaurant_info") {
+          builtInTool = GET_RESTAURANT_INFO_TOOL
         }
         
         if (builtInTool) {
@@ -1343,6 +1347,122 @@ async function executeBuiltInTool(
         return {
           error: true,
           message: `Otel bilgileri alınırken bir hata oluştu: ${err.message || err}`
+        }
+      }
+
+    case "get_restaurant_info":
+      // Get restaurant information from KB directly (no internal fetch)
+      try {
+        console.log("[get_restaurant_info] Starting with args:", JSON.stringify(args, null, 2))
+        
+        // Validate call context
+        if (!call) {
+          throw new Error("Call record is missing")
+        }
+
+        if (!call.bot || !call.bot.organizationId) {
+          throw new Error("Call context missing organization/bot info")
+        }
+
+        const organizationId = call.bot.organizationId
+        const section = args.section || "all"
+
+        // Find bot-assigned user (customer)
+        let customerId: string | null = null
+        if (call.bot?.id) {
+          const botAssignment = await prisma.botAssignment.findFirst({
+            where: { botId: call.bot.id },
+            include: { user: true }
+          })
+          customerId = botAssignment?.user?.id || null
+        }
+
+        if (!customerId) {
+          // Fallback: Find first RESTAURANT customer in organization
+          const restaurantCustomer = await prisma.user.findFirst({
+            where: {
+              organizationId,
+              customerType: "RESTAURANT"
+            }
+          })
+          customerId = restaurantCustomer?.id || null
+        }
+
+        if (!customerId) {
+          throw new Error("No customer found for this bot")
+        }
+
+        // Find restaurant knowledge base for this customer
+        const knowledgeBase = await prisma.knowledgeBase.findFirst({
+          where: {
+            organizationId,
+            customerId,
+            customer: {
+              customerType: "RESTAURANT"
+            }
+          }
+        })
+
+        if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
+          return {
+            success: true,
+            section: section === "all" ? "all" : section,
+            data: {},
+            message: "Restoran bilgisi bulunamadı."
+          }
+        }
+
+        // Parse restaurant data from KB JSON
+        let restaurantData: any
+        try {
+          restaurantData = JSON.parse(knowledgeBase.texts[0])
+        } catch (parseError) {
+          console.error("[get_restaurant_info] Failed to parse KB JSON:", parseError)
+          return {
+            error: true,
+            message: "Restoran verisi okunamadı."
+          }
+        }
+
+        // Return requested section or all data
+        let responseData: any = {}
+
+        if (section === "all" || section === "facility") {
+          responseData.facilityInfo = restaurantData.facilityInfo || {}
+        }
+
+        if (section === "all" || section === "menus") {
+          responseData.menus = restaurantData.menus || {
+            yiyecek: [],
+            icecek: [],
+            tatli: [],
+            diyet: [],
+            minimumTutar: ""
+          }
+        }
+
+        if (section === "all" || section === "campaigns") {
+          responseData.campaigns = restaurantData.campaigns || []
+        }
+
+        if (section === "all" || section === "other") {
+          responseData.other = restaurantData.other || {}
+        }
+
+        console.log("[get_restaurant_info] Restaurant info fetched for section:", section)
+
+        return {
+          success: true,
+          section: section === "all" ? "all" : section,
+          data: responseData,
+          message: "Restoran bilgileri başarıyla alındı."
+        }
+
+      } catch (err: any) {
+        console.error("[get_restaurant_info] Error:", err)
+        return {
+          error: true,
+          message: `Restoran bilgileri alınırken bir hata oluştu: ${err.message || err}`
         }
       }
 

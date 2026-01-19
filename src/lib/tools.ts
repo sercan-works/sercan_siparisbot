@@ -94,7 +94,7 @@ export const CREATE_ORDER_TOOL = {
     type: "function",
     function: {
         name: "create_order",
-        description: "Create a new restaurant order. CRITICAL: You MUST have verbally confirmed all details (items, address, customer name) with the user and received a clear confirmation before using this tool. Use this when the customer wants to place an order.",
+        description: "Create a new restaurant order. CRITICAL: Before using this tool, you MUST first use get_restaurant_info to access menu items, prices, and delivery information from the knowledge base. You MUST have verbally confirmed all details (items, address, customer name) with the user and received a clear confirmation before using this tool. Use this when the customer wants to place an order.",
         parameters: {
             type: "object",
             properties: {
@@ -186,6 +186,25 @@ export const GET_PRICE_RULES_TOOL = {
         parameters: {
             type: "object",
             properties: {},
+            required: []
+        }
+    }
+}
+
+export const GET_RESTAURANT_INFO_TOOL = {
+    type: "function",
+    function: {
+        name: "get_restaurant_info",
+        description: "Get restaurant information from the knowledge base including facility details, menus, campaigns, and other information. CRITICAL: Use this BEFORE creating an order to access menu items, prices, delivery information, working hours, and other restaurant details. Use this when customer asks about menu items, prices, delivery options, working hours, or any restaurant information.",
+        parameters: {
+            type: "object",
+            properties: {
+                section: {
+                    type: "string",
+                    description: "Optional specific section to retrieve: 'facility' (restaurant facility info, working hours, delivery info), 'menus' (food, drinks, desserts, diet items, minimum order amount), 'campaigns' (current promotions and discounts), 'other' (payment methods, special products, certificates, vision/mission, story, reservations, hygiene/security), or 'all' for everything. If not provided, returns all information.",
+                    enum: ["facility", "menus", "campaigns", "other", "all"]
+                }
+            },
             required: []
         }
     }

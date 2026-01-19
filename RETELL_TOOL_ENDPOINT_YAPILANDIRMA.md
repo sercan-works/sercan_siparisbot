@@ -263,9 +263,45 @@ https://siparisbot.vercel.app/api/webhooks/tool-call
 
 ## 🍕 Restaurant Bot Tool'ları
 
-Restaurant bot'ları için aşağıdaki tool otomatik olarak eklenir:
+Restaurant bot'ları için aşağıdaki tool'lar otomatik olarak eklenir:
 
-### 1. create_order
+### 1. get_restaurant_info
+
+**Name:**
+```
+get_restaurant_info
+```
+
+**Description:**
+```
+Get restaurant information from the knowledge base including facility details, menus, campaigns, and other information. CRITICAL: Use this BEFORE creating an order to access menu items, prices, delivery information, working hours, and other restaurant details. Use this when customer asks about menu items, prices, delivery options, working hours, or any restaurant information.
+```
+
+**API Endpoint:**
+```
+https://siparisbot.vercel.app/api/webhooks/tool-call
+```
+
+**Parameters (JSON Schema):**
+```json
+{
+  "type": "object",
+  "properties": {
+    "section": {
+      "type": "string",
+      "description": "Optional specific section to retrieve: 'facility' (restaurant facility info, working hours, delivery info), 'menus' (food, drinks, desserts, diet items, minimum order amount), 'campaigns' (current promotions and discounts), 'other' (payment methods, special products, certificates, vision/mission, story, reservations, hygiene/security), or 'all' for everything. If not provided, returns all information.",
+      "enum": ["facility", "menus", "campaigns", "other", "all"]
+    }
+  },
+  "required": []
+}
+```
+
+**Not:** Bu tool parametre gerektirmez. Section parametresi opsiyoneldir.
+
+---
+
+### 2. create_order
 
 **Name:**
 ```
@@ -274,7 +310,7 @@ create_order
 
 **Description:**
 ```
-Create a new restaurant order. CRITICAL: You MUST have verbally confirmed all details (items, address, customer name) with the user and received a clear confirmation before using this tool. Use this when the customer wants to place an order.
+Create a new restaurant order. CRITICAL: Before using this tool, you MUST first use get_restaurant_info to access menu items, prices, and delivery information from the knowledge base. You MUST have verbally confirmed all details (items, address, customer name) with the user and received a clear confirmation before using this tool. Use this when the customer wants to place an order.
 ```
 
 **API Endpoint:**
@@ -365,8 +401,9 @@ Her bot için tool'ları Retell Dashboard'dan manuel olarak eklemeniz gerekiyor:
 4. `get_hotel_info`
 5. `get_pricing_info`
 
-**Restaurant Bot'ları için 1 tool ekleyin:**
-1. `create_order`
+**Restaurant Bot'ları için 2 tool ekleyin:**
+1. `get_restaurant_info`
+2. `create_order`
 
 Her tool için:
 1. **Add Tool** veya **+ Tool** butonuna tıklayın

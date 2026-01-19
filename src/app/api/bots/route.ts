@@ -12,7 +12,8 @@ import {
   GET_ROOM_TYPES_TOOL,
   GET_HOTEL_INFO_TOOL,
   GET_PRICING_INFO_TOOL,
-  GET_PRICE_RULES_TOOL
+  GET_PRICE_RULES_TOOL,
+  GET_RESTAURANT_INFO_TOOL
 } from "@/lib/tools"
 import { updateBotPromptWithPricingPrompt } from "@/lib/bot-prompt-helper"
 
@@ -197,7 +198,7 @@ export async function POST(req: NextRequest) {
               GET_PRICE_RULES_TOOL
             ]
           : session.user.customerType === "RESTAURANT"
-          ? [CREATE_ORDER_TOOL]
+          ? [GET_RESTAURANT_INFO_TOOL, CREATE_ORDER_TOOL]
           : undefined,
         // Auto-assign to creator if customer
         ...(role === "CUSTOMER" && {
