@@ -269,10 +269,13 @@ export default function LiveOrdersPage() {
   }
 
   const formatTime = (dateString: string) => {
+    // Ensure dateString is treated as UTC if it doesn't have timezone info
     const date = new Date(dateString)
+    // Use Istanbul timezone (UTC+3) for Turkish locale
     return date.toLocaleTimeString("tr-TR", {
       hour: "2-digit",
-      minute: "2-digit"
+      minute: "2-digit",
+      timeZone: "Europe/Istanbul"
     })
   }
 
@@ -281,18 +284,28 @@ export default function LiveOrdersPage() {
     return date.toLocaleDateString("tr-TR", {
       day: "2-digit",
       month: "2-digit",
-      year: "numeric"
+      year: "numeric",
+      timeZone: "Europe/Istanbul"
     })
   }
 
   const getTimeSince = (dateString: string) => {
-    const now = new Date().getTime()
-    const created = new Date(dateString).getTime()
-    const diffMinutes = Math.floor((now - created) / 60000)
+    const now = new Date()
+    const created = new Date(dateString)
+    
+    // Calculate difference in milliseconds
+    const diffMs = now.getTime() - created.getTime()
+    const diffMinutes = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMinutes / 60)
+    const diffDays = Math.floor(diffHours / 24)
 
     if (diffMinutes < 1) return "Az önce"
     if (diffMinutes === 1) return "1 dakika önce"
-    return `${diffMinutes} dakika önce`
+    if (diffMinutes < 60) return `${diffMinutes} dakika önce`
+    if (diffHours === 1) return "1 saat önce"
+    if (diffHours < 24) return `${diffHours} saat önce`
+    if (diffDays === 1) return "1 gün önce"
+    return `${diffDays} gün önce`
   }
 
   // WhatsApp mesajı oluştur
