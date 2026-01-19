@@ -219,7 +219,7 @@ export default function MetricsDashboard({ data, isLoading }: MetricsDashboardPr
               <p className="text-muted-foreground">Mutluluk Oranı</p>
               <p className="text-2xl font-bold text-emerald-600">
                 {data.customerSatisfactionRate !== undefined
-                  ? `${data.customerSatisfactionRate.toFixed(1)}%`
+                  ? `${data.customerSatisfactionRate.toFixed(1)}`
                   : data.totalCalls > 0 
                     ? ((totalSuccessful / data.totalCalls) * 100).toFixed(1)
                     : "0"}%
