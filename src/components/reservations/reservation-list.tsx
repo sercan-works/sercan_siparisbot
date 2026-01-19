@@ -246,7 +246,6 @@ export default function ReservationList({ initialReservations }: ReservationList
                                     {totalPrice && totalPrice > 0 ? (
                                         <div className="flex items-center justify-between bg-green-50 px-4 py-3 rounded-lg border border-green-100">
                                             <div className="flex items-center gap-2 text-sm text-gray-700">
-                                                <DollarSign className="w-4 h-4 text-green-600" />
                                                 <span className="font-medium">Toplam Fiyat:</span>
                                             </div>
                                             <div className="text-right">
