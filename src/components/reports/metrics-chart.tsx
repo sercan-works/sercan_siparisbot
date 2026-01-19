@@ -1,5 +1,6 @@
 "use client"
 
+import React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
@@ -26,6 +27,7 @@ interface MetricsChartProps {
 export default function MetricsChart({ dailyBreakdown, isLoading, customerType }: MetricsChartProps) {
   const isHotel = customerType === "HOTEL"
   const isRestaurant = customerType === "RESTAURANT"
+  
   if (isLoading) {
     return (
       <Card>
@@ -64,55 +66,55 @@ export default function MetricsChart({ dailyBreakdown, isLoading, customerType }
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left p-2">Tarih</th>
-                  <th className="text-right p-2">Toplam</th>
-                  {(!customerType || isHotel) && (
-                    <th className="text-right p-2">Rezervasyon</th>
-                  )}
-                  {(!customerType || isRestaurant) && (
-                    <th className="text-right p-2">Sipariş</th>
-                  )}
-                  <th className="text-right p-2">Fiyat Yüksek</th>
-                  {(!customerType || isHotel) && (
-                    <th className="text-right p-2">Yer Yok</th>
-                  )}
-                  {(!customerType || isRestaurant) && (
-                    <th className="text-right p-2">Ürün Yok</th>
-                  )}
-                  <th className="text-right p-2">Dönüşüm %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dailyBreakdown.map((day) => {
-                  const date = new Date(day.date)
-                  return (
-                    <tr key={day.date} className="border-b hover:bg-gray-50">
-                      <td className="p-2">{format(date, "dd MMM yyyy", { locale: tr })}</td>
-                      <td className="text-right p-2 font-medium">{day.metrics.totalCalls}</td>
-                      {(!customerType || isHotel) && (
-                        <td className="text-right p-2 text-green-600">{day.metrics.successfulReservations}</td>
-                      )}
-                      {(!customerType || isRestaurant) && (
-                        <td className="text-right p-2 text-blue-600">{day.metrics.successfulOrders}</td>
-                      )}
-                      <td className="text-right p-2 text-orange-600">{day.metrics.priceTooHigh}</td>
-                      {(!customerType || isHotel) && (
-                        <td className="text-right p-2 text-red-600">{day.metrics.noRoomAvailable}</td>
-                      )}
-                      {(!customerType || isRestaurant) && (
-                        <td className="text-right p-2 text-yellow-600">{day.metrics.productUnavailable}</td>
-                      )}
-                      <td className="text-right p-2 font-medium">{day.metrics.conversionRate.toFixed(1)}%</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left p-2">Tarih</th>
+                <th className="text-right p-2">Toplam</th>
+                {(!customerType || isHotel) && (
+                  <th className="text-right p-2">Rezervasyon</th>
+                )}
+                {(!customerType || isRestaurant) && (
+                  <th className="text-right p-2">Sipariş</th>
+                )}
+                <th className="text-right p-2">Fiyat Yüksek</th>
+                {(!customerType || isHotel) && (
+                  <th className="text-right p-2">Yer Yok</th>
+                )}
+                {(!customerType || isRestaurant) && (
+                  <th className="text-right p-2">Ürün Yok</th>
+                )}
+                <th className="text-right p-2">Dönüşüm %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dailyBreakdown.map((day) => {
+                const date = new Date(day.date)
+                return (
+                  <tr key={day.date} className="border-b hover:bg-gray-50">
+                    <td className="p-2">{format(date, "dd MMM yyyy", { locale: tr })}</td>
+                    <td className="text-right p-2 font-medium">{day.metrics.totalCalls}</td>
+                    {(!customerType || isHotel) && (
+                      <td className="text-right p-2 text-green-600">{day.metrics.successfulReservations}</td>
+                    )}
+                    {(!customerType || isRestaurant) && (
+                      <td className="text-right p-2 text-blue-600">{day.metrics.successfulOrders}</td>
+                    )}
+                    <td className="text-right p-2 text-orange-600">{day.metrics.priceTooHigh}</td>
+                    {(!customerType || isHotel) && (
+                      <td className="text-right p-2 text-red-600">{day.metrics.noRoomAvailable}</td>
+                    )}
+                    {(!customerType || isRestaurant) && (
+                      <td className="text-right p-2 text-yellow-600">{day.metrics.productUnavailable}</td>
+                    )}
+                    <td className="text-right p-2 font-medium">{day.metrics.conversionRate.toFixed(1)}%</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </CardContent>
     </Card>
   )
 }
-
