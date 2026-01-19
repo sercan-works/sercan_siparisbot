@@ -695,6 +695,36 @@ async function executeBuiltInTool(
           }
         }
 
+        // Parse payment method from args or transcript
+        // Priority: 1. args.payment_method/paymentMethod, 2. Parse from transcript
+        let paymentMethod: "CARD" | "CASH" | null = null
+        
+        // Try to get from args first
+        const paymentMethodFromArgs = args.payment_method || args.paymentMethod || args.payment
+        if (paymentMethodFromArgs) {
+          const paymentStr = String(paymentMethodFromArgs).toLowerCase().trim()
+          if (paymentStr.includes("kart") || paymentStr.includes("card") || paymentStr.includes("kredi") || paymentStr.includes("debit")) {
+            paymentMethod = "CARD"
+          } else if (paymentStr.includes("nakit") || paymentStr.includes("cash") || paymentStr.includes("para")) {
+            paymentMethod = "CASH"
+          }
+        }
+        
+        // If not found in args, try to parse from transcript
+        if (!paymentMethod) {
+          const transcript = call?.transcript || body?.call?.transcript || body?.transcript || ""
+          const transcriptLower = transcript.toLowerCase()
+          
+          // Look for payment method patterns in transcript
+          if (transcriptLower.includes("kart") || transcriptLower.includes("kartla") || transcriptLower.includes("kart ile") || 
+              transcriptLower.includes("kredi kartı") || transcriptLower.includes("debit")) {
+            paymentMethod = "CARD"
+          } else if (transcriptLower.includes("nakit") || transcriptLower.includes("nakit ile") || 
+                     transcriptLower.includes("kapıda nakit") || transcriptLower.includes("cash")) {
+            paymentMethod = "CASH"
+          }
+        }
+
         console.log("[create_order] Prepared order data:", {
           customerId: assignedUser.id,
           callId: call.id,
@@ -702,7 +732,8 @@ async function executeBuiltInTool(
           customerName: args.customer_name || args.name || "Misafir Müşteri",
           items: args.items || "Belirtilmedi",
           totalAmount,
-          deliveryAddress: args.delivery_address || args.address || null
+          deliveryAddress: args.delivery_address || args.address || null,
+          paymentMethod
         })
 
         // Validate call.id is not null/undefined
@@ -733,6 +764,7 @@ async function executeBuiltInTool(
               deliveryAddress: args.delivery_address || args.address || null,
               totalAmount: totalAmount,
               notes: args.notes || null,
+              paymentMethod: paymentMethod,
             },
             create: {
               customerId: assignedUser.id,
@@ -743,6 +775,7 @@ async function executeBuiltInTool(
               deliveryAddress: args.delivery_address || args.address || null,
               totalAmount: totalAmount,
               notes: args.notes || null,
+              paymentMethod: paymentMethod,
               status: "PENDING"
             }
           })
