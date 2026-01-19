@@ -6,7 +6,9 @@ import DateRangeSelector from "@/components/reports/date-range-selector"
 import MetricsDashboard from "@/components/reports/metrics-dashboard"
 import MetricsChart from "@/components/reports/metrics-chart"
 import { Card, CardContent } from "@/components/ui/card"
-import { Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Loader2, FileDown } from "lucide-react"
+import { exportToPDF } from "@/lib/pdf-export"
 
 interface AnalyticsData {
   totalCalls: number
@@ -86,13 +88,31 @@ export default function ReportsPage() {
     setEndDate(newEndDate)
   }
 
+  const handleExportPDF = () => {
+    if (data) {
+      exportToPDF(data)
+    }
+  }
+
   return (
     <div className="p-6 sm:p-8 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Raporlar</h1>
-        <p className="text-gray-500 mt-1">
-          Görüşme metrikleri ve analiz raporları
-        </p>
+      <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Raporlar</h1>
+          <p className="text-gray-500 mt-1">
+            Görüşme metrikleri ve analiz raporları
+          </p>
+        </div>
+        {!isLoading && !error && data && data.totalCalls > 0 && (
+          <Button
+            onClick={handleExportPDF}
+            className="flex items-center gap-2"
+            variant="outline"
+          >
+            <FileDown className="h-4 w-4" />
+            PDF Olarak İndir
+          </Button>
+        )}
       </div>
 
       {/* Date Range Selector */}

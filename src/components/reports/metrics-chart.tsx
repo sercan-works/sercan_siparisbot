@@ -30,7 +30,7 @@ export default function MetricsChart({ dailyBreakdown, isLoading, customerType }
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Günlük Trend</CardTitle>
+          <CardTitle>Günlük Detay</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-64 bg-gray-100 animate-pulse rounded"></div>
@@ -43,7 +43,7 @@ export default function MetricsChart({ dailyBreakdown, isLoading, customerType }
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Günlük Trend</CardTitle>
+          <CardTitle>Günlük Detay</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-64 flex items-center justify-center text-gray-500">
@@ -54,92 +54,16 @@ export default function MetricsChart({ dailyBreakdown, isLoading, customerType }
     )
   }
 
-  // Find max value for scaling
-  const maxValue = Math.max(
-    ...dailyBreakdown.map(d => {
-      const successCount = isHotel 
-        ? d.metrics.successfulReservations 
-        : isRestaurant 
-        ? d.metrics.successfulOrders 
-        : d.metrics.successfulReservations + d.metrics.successfulOrders
-      return Math.max(d.metrics.totalCalls, successCount)
-    })
-  )
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Günlük Trend</CardTitle>
+        <CardTitle>Günlük Detay</CardTitle>
         <p className="text-sm text-muted-foreground">
           Seçilen tarih aralığındaki günlük metrikler
         </p>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
-          {/* Simple bar chart representation */}
-          <div className="space-y-2">
-            {dailyBreakdown.map((day) => {
-              const date = new Date(day.date)
-              const totalHeight = 200
-              const callsHeight = (day.metrics.totalCalls / maxValue) * totalHeight
-              
-              const successCount = isHotel 
-                ? day.metrics.successfulReservations 
-                : isRestaurant 
-                ? day.metrics.successfulOrders 
-                : day.metrics.successfulReservations + day.metrics.successfulOrders
-              
-              const successHeight = (successCount / maxValue) * totalHeight
-              
-              return (
-                <div key={day.date} className="flex items-end gap-2">
-                  <div className="w-20 text-xs text-gray-600">
-                    {format(date, "dd MMM", { locale: tr })}
-                  </div>
-                  <div className="flex-1 flex items-end gap-1">
-                    {/* Total calls bar */}
-                    <div className="flex-1 relative">
-                      <div
-                        className="bg-blue-200 rounded-t"
-                        style={{ height: `${callsHeight}px` }}
-                        title={`Toplam: ${day.metrics.totalCalls}`}
-                      ></div>
-                      <div className="text-xs text-center mt-1 text-gray-600">
-                        {day.metrics.totalCalls}
-                      </div>
-                    </div>
-                    
-                    {/* Success bar */}
-                    <div className="flex-1 relative">
-                      <div
-                        className="bg-green-500 rounded-t"
-                        style={{ height: `${successHeight}px` }}
-                        title={`Başarılı: ${successCount}`}
-                      ></div>
-                      <div className="text-xs text-center mt-1 text-green-600">
-                        {successCount}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Legend */}
-          <div className="flex gap-4 justify-center pt-4 border-t">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-blue-200 rounded"></div>
-              <span className="text-xs text-gray-600">Toplam Arama</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-green-500 rounded"></div>
-              <span className="text-xs text-gray-600">Başarılı İşlem</span>
-            </div>
-          </div>
-
-          {/* Detailed table */}
-          <div className="mt-6 overflow-x-auto">
+        <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
@@ -187,8 +111,6 @@ export default function MetricsChart({ dailyBreakdown, isLoading, customerType }
                 })}
               </tbody>
             </table>
-          </div>
-        </div>
       </CardContent>
     </Card>
   )
