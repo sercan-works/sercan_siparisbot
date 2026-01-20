@@ -109,11 +109,11 @@ export default function ReservationList({ initialReservations }: ReservationList
             return true
         })
 
-        // Sort: upcoming by checkIn (ascending), past by checkIn (descending)
+        // Sort: by createdAt (descending) - most recent reservations first
         return filtered.sort((a, b) => {
-            const dateA = new Date(a.checkIn).getTime()
-            const dateB = new Date(b.checkIn).getTime()
-            return activeTab === "upcoming" ? dateA - dateB : dateB - dateA
+            const dateA = new Date(a.createdAt).getTime()
+            const dateB = new Date(b.createdAt).getTime()
+            return dateB - dateA // Descending: newest first
         })
     }, [reservations, searchQuery, activeTab, today])
 
