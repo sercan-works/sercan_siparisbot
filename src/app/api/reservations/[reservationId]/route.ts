@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { updateKnowledgeBaseRoomCount } from "@/lib/knowledge-base-updater"
+import { updateKnowledgeBaseDailyRatesAvailability } from "@/lib/knowledge-base-updater"
 
 export const dynamic = "force-dynamic"
 
@@ -120,26 +120,24 @@ export async function PATCH(
       return updated
     })
 
-    // Update knowledge base room count asynchronously if status changed and roomTypeId exists
-    if (reservation.roomTypeId && reservation.roomType && ((oldStatus !== "CANCELLED" && newStatus === "CANCELLED") || (oldStatus === "CANCELLED" && newStatus !== "CANCELLED"))) {
-      // Get updated room type count after transaction
-      const roomType = await prisma.roomType.findUnique({
-        where: { id: reservation.roomTypeId },
-        select: { totalRooms: true }
+    // Update knowledge base daily rates availability asynchronously if status changed
+    // Only update if status transition involves CANCELLED status
+    if ((oldStatus !== "CANCELLED" && newStatus === "CANCELLED") || (oldStatus === "CANCELLED" && newStatus !== "CANCELLED")) {
+      const customerOrgId = reservation.customer?.organizationId || organizationId
+      
+      // Determine delta: -1 to increase (cancelling reservation), 1 to decrease (confirming reservation)
+      const delta = oldStatus !== "CANCELLED" && newStatus === "CANCELLED" ? -1 : 1
+      
+      updateKnowledgeBaseDailyRatesAvailability(
+        customerOrgId,
+        reservation.customerId,
+        reservation.checkIn,
+        reservation.checkOut,
+        delta
+      ).catch((err) => {
+        console.error("[reservation status] Failed to update knowledge base daily rates:", err)
+        // Don't fail status update if KB update fails
       })
-
-      if (roomType) {
-        const customerOrgId = reservation.customer?.organizationId || organizationId
-        updateKnowledgeBaseRoomCount(
-          customerOrgId,
-          reservation.customerId,
-          reservation.roomType,
-          roomType.totalRooms
-        ).catch((err) => {
-          console.error("[reservation status] Failed to update knowledge base:", err)
-          // Don't fail status update if KB update fails
-        })
-      }
     }
 
     return NextResponse.json({ reservation: updatedReservation })

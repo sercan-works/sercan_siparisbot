@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { callRetellApi } from "@/lib/retell"
-import { updateKnowledgeBaseRoomCount } from "@/lib/knowledge-base-updater"
+import { updateKnowledgeBaseDailyRatesAvailability } from "@/lib/knowledge-base-updater"
 import { analyzeToolCallResult } from "@/lib/call-metrics-analyzer"
 import crypto from "crypto"
 
@@ -1951,65 +1951,18 @@ async function executeBuiltInTool(
 
         console.log("[create_reservation] Reservation created successfully:", reservation.id)
 
-        // Update knowledge base room count asynchronously (don't wait for it)
-        // First, get current count from KB, then decrease by 1
-        if (args.roomType) {
-          try {
-            // Find KB for this customer
-            const knowledgeBase = await prisma.knowledgeBase.findFirst({
-              where: {
-                organizationId,
-                customerId: assignedUser.id,
-                customer: {
-                  customerType: "HOTEL"
-                }
-              }
-            })
-
-            if (knowledgeBase && knowledgeBase.texts && knowledgeBase.texts.length > 0) {
-              try {
-                const hotelData = JSON.parse(knowledgeBase.texts[0])
-                const kbRoomTypes = hotelData.roomTypes || []
-                
-                // Find matching room type in KB (case-insensitive)
-                const matchedKBRoomType = kbRoomTypes.find((rt: any) => {
-                  return rt.name && rt.name.toLowerCase() === args.roomType.toLowerCase()
-                })
-
-                if (matchedKBRoomType) {
-                  const currentAdet = parseInt(matchedKBRoomType.adet || "0")
-                  const newAdet = Math.max(0, currentAdet - 1)
-                  
-                  console.log("[create_reservation] Updating KB room count:", {
-                    roomTypeName: args.roomType,
-                    currentAdet,
-                    newAdet
-                  })
-
-                  // Update KB asynchronously
-                  updateKnowledgeBaseRoomCount(
-                    organizationId,
-                    assignedUser.id,
-                    args.roomType,
-                    newAdet
-                  ).catch((err) => {
-                    console.error("[create_reservation] Failed to update knowledge base:", err)
-                    // Don't fail reservation creation if KB update fails
-                  })
-                } else {
-                  console.log("[create_reservation] Room type not found in KB:", args.roomType)
-                }
-              } catch (parseError) {
-                console.error("[create_reservation] Failed to parse KB JSON:", parseError)
-              }
-            } else {
-              console.log("[create_reservation] No knowledge base found for customer")
-            }
-          } catch (kbError) {
-            console.error("[create_reservation] Error checking KB:", kbError)
-            // Don't fail reservation creation if KB check fails
-          }
-        }
+        // Update knowledge base daily rates availability asynchronously (don't wait for it)
+        // Decrease availableRooms for each day in the reservation date range
+        updateKnowledgeBaseDailyRatesAvailability(
+          organizationId,
+          assignedUser.id,
+          checkInDate,
+          checkOutDate,
+          1 // delta=1 means decrease availableRooms by 1
+        ).catch((err) => {
+          console.error("[create_reservation] Failed to update knowledge base daily rates:", err)
+          // Don't fail reservation creation if KB update fails
+        })
 
         // Update metrics for successful reservation
         if (call?.id) {

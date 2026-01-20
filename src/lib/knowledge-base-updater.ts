@@ -1,9 +1,149 @@
 import { prisma } from "./prisma"
 
 /**
+ * Update daily rates availability in knowledge bases for a given reservation date range
+ * This function finds all HOTEL knowledge bases for the customer and updates the availableRooms
+ * in the pricing.dailyRates array for each day in the reservation period
+ */
+export async function updateKnowledgeBaseDailyRatesAvailability(
+  organizationId: string,
+  customerId: string,
+  checkIn: Date,
+  checkOut: Date,
+  delta: number // 1 to decrease, -1 to increase
+): Promise<void> {
+  try {
+    // Find all HOTEL knowledge bases for this customer
+    const knowledgeBases = await prisma.knowledgeBase.findMany({
+      where: {
+        organizationId,
+        customerId,
+        customer: {
+          customerType: "HOTEL"
+        }
+      }
+    })
+
+    if (knowledgeBases.length === 0) {
+      console.log(`[KB DailyRates Update] No knowledge bases found for customer ${customerId}`)
+      return
+    }
+
+    console.log(`[KB DailyRates Update] Found ${knowledgeBases.length} knowledge base(s) to update for date range: ${checkIn.toISOString().split('T')[0]} to ${checkOut.toISOString().split('T')[0]}`)
+
+    // Normalize dates (set to start of day)
+    const startDate = new Date(checkIn)
+    startDate.setHours(0, 0, 0, 0)
+    const endDate = new Date(checkOut)
+    endDate.setHours(0, 0, 0, 0)
+
+    // Generate array of dates in range (checkIn inclusive, checkOut exclusive)
+    const datesToUpdate: Date[] = []
+    const currentDate = new Date(startDate)
+    while (currentDate < endDate) {
+      datesToUpdate.push(new Date(currentDate))
+      currentDate.setDate(currentDate.getDate() + 1)
+    }
+
+    console.log(`[KB DailyRates Update] Updating ${datesToUpdate.length} dates with delta: ${delta}`)
+
+    // Update each knowledge base
+    for (const kb of knowledgeBases) {
+      try {
+        if (!kb.texts || kb.texts.length === 0) {
+          console.warn(`[KB DailyRates Update] Knowledge base ${kb.id} has no texts, skipping`)
+          continue
+        }
+
+        // Parse the first text chunk as JSON (hotel data format)
+        let hotelData: any
+        try {
+          hotelData = JSON.parse(kb.texts[0])
+        } catch (parseError) {
+          console.warn(`[KB DailyRates Update] Failed to parse JSON for KB ${kb.id}, skipping:`, parseError)
+          continue
+        }
+
+        // Initialize pricing structure if it doesn't exist
+        if (!hotelData.pricing) {
+          hotelData.pricing = {}
+        }
+        if (!hotelData.pricing.dailyRates || !Array.isArray(hotelData.pricing.dailyRates)) {
+          hotelData.pricing.dailyRates = []
+        }
+
+        const dailyRates = hotelData.pricing.dailyRates
+        let updatedCount = 0
+
+        // Update each date in the range
+        for (const date of datesToUpdate) {
+          const dateKey = date.toISOString().split('T')[0] // YYYY-MM-DD format
+
+          // Find existing daily rate for this date
+          let dailyRate = dailyRates.find((rate: any) => rate.date === dateKey)
+
+          if (dailyRate) {
+            // Update existing rate
+            const currentAvailableRooms = parseInt(dailyRate.availableRooms || "0")
+            const newAvailableRooms = Math.max(0, currentAvailableRooms - delta) // delta is 1 to decrease, -1 to increase, so subtract delta
+            
+            dailyRate.availableRooms = String(newAvailableRooms)
+            updatedCount++
+            
+            console.log(`[KB DailyRates Update] Updated date ${dateKey}: ${currentAvailableRooms} -> ${newAvailableRooms} (delta: ${delta})`)
+          } else {
+            // Create new daily rate entry
+            // If delta is 1 (decreasing), we're creating a reservation, so start with 0 or a default value
+            // If delta is -1 (increasing), we're cancelling, so we need to know the base value
+            // For new entries, we'll set availableRooms to Math.max(0, -delta) which means:
+            // - If delta=1 (decrease), new entry gets 0 (no rooms available)
+            // - If delta=-1 (increase), new entry gets 1 (one room becomes available)
+            const initialAvailableRooms = Math.max(0, -delta)
+            
+            dailyRates.push({
+              date: dateKey,
+              availableRooms: String(initialAvailableRooms),
+              ppPrice: "",
+              single: "",
+              dbl: "",
+              triple: ""
+            })
+            updatedCount++
+            
+            console.log(`[KB DailyRates Update] Created new date entry ${dateKey} with availableRooms: ${initialAvailableRooms}`)
+          }
+        }
+
+        if (updatedCount > 0) {
+          // Update the knowledge base texts with the updated JSON
+          const updatedTexts = [JSON.stringify(hotelData)]
+          await prisma.knowledgeBase.update({
+            where: { id: kb.id },
+            data: { texts: updatedTexts }
+          })
+
+          console.log(`[KB DailyRates Update] Updated KB ${kb.id} in database (${updatedCount} dates updated)`)
+        } else {
+          console.log(`[KB DailyRates Update] No dates to update for KB ${kb.id}`)
+        }
+      } catch (kbError: any) {
+        console.error(`[KB DailyRates Update] Error updating KB ${kb.id}:`, kbError)
+        // Continue with other KBs even if one fails
+      }
+    }
+
+    console.log(`[KB DailyRates Update] Completed updating knowledge bases for date range`)
+  } catch (error: any) {
+    console.error(`[KB DailyRates Update] Error updating knowledge bases:`, error)
+    // Don't throw - KB update is not critical for reservation creation
+  }
+}
+
+/**
  * Update room count in knowledge bases for a given customer and room type
  * This function finds all HOTEL knowledge bases for the customer, updates the room count
  * in the roomTypes array, and syncs the changes to Retell API
+ * @deprecated Use updateKnowledgeBaseDailyRatesAvailability instead
  */
 export async function updateKnowledgeBaseRoomCount(
   organizationId: string,
