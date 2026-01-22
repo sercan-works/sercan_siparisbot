@@ -6,7 +6,7 @@ Bot'ta `create_order` tool'u tanımlı değil. Response: `"Available tools: "` (
 ## Çözüm Yöntemleri
 
 ### Yöntem 1: Bot'u Güncellemek (Önerilen - Otomatik)
-
+s
 Bot'u güncellediğinizde sistem RESTAURANT bot'ları için otomatik olarak `create_order` tool'unu ekler.
 
 **Postman ile:**
