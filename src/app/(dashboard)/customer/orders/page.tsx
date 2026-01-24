@@ -639,7 +639,7 @@ export default function LiveOrdersPage() {
                             {order.status === "PENDING" && (
                               <Button
                                 variant="default"
-                                onClick={() => updateOrderStatusAndSwitchTab(order.id, "PREPARING", "preparing")}
+                                onClick={async () => await updateOrderStatusAndSwitchTab(order.id, "PREPARING", "preparing")}
                               >
                                 <ChefHat className="h-4 w-4 mr-2" />
                                 Hazırla
@@ -797,7 +797,7 @@ export default function LiveOrdersPage() {
                             <Button
                               className="w-full"
                               variant="default"
-                              onClick={() => updateOrderStatusAndSwitchTab(order.id, "COMPLETED", "completed")}
+                              onClick={async () => await updateOrderStatusAndSwitchTab(order.id, "COMPLETED", "completed")}
                             >
                               <Check className="h-4 w-4 mr-2" />
                               Tamamlandı

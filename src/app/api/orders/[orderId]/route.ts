@@ -15,19 +15,40 @@ export async function PATCH(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { id: userId } = session.user
+  const { id: userId, role, organizationId } = session.user
   const { orderId } = params
 
   try {
     const body = await req.json()
     const { status } = body
 
-    // Verify order belongs to user
+    // Verify order belongs to user (same logic as GET /api/orders)
+    const where: any = {
+      id: orderId,
+      // If CUSTOMER (Restaurant), allow orders assigned to them OR orders from bots they're assigned to
+      // If ADMIN, allow all orders in organization
+      ...(role === "CUSTOMER" ? {
+        OR: [
+          { customerId: userId },
+          {
+            call: {
+              bot: {
+                assignments: {
+                  some: { userId }
+                }
+              }
+            }
+          }
+        ]
+      } : {
+        customer: {
+          organizationId: organizationId
+        }
+      })
+    }
+
     const order = await prisma.order.findFirst({
-      where: {
-        id: orderId,
-        customerId: userId
-      }
+      where
     })
 
     if (!order) {
