@@ -246,7 +246,7 @@ export default function LiveOrdersPage() {
     )
   }, [allOrders, activeTab, searchQuery])
 
-  // Update order status
+  // Update order status (sadece API çağrısı yapar)
   const updateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
     console.log(`🔄 Updating order ${orderId} status to ${newStatus}`)
 
@@ -263,31 +263,39 @@ export default function LiveOrdersPage() {
         const updatedOrder = await response.json()
         console.log(`✅ Order status updated successfully:`, {
           orderId: updatedOrder.order.id,
-          newStatus: updatedOrder.order.status,
-          previousStatus: updatedOrder.order.status // API response doesn't include previous status
+          newStatus: updatedOrder.order.status
         })
-
-        // Refresh orders based on the new status
-        if (newStatus === "PREPARING" || newStatus === "READY") {
-          console.log(`🔄 Fetching PREPARING orders...`)
-          fetchOrders("PREPARING")
-        } else if (newStatus === "PENDING") {
-          console.log(`🔄 Fetching PENDING orders...`)
-          fetchOrders("PENDING")
-        } else if (newStatus === "COMPLETED") {
-          console.log(`🔄 Fetching COMPLETED orders...`)
-          fetchOrders("COMPLETED")
-        } else {
-          // Fallback: refresh all orders
-          console.log(`🔄 Fetching all orders...`)
-          fetchOrders()
-        }
+        return true // Başarılı
       } else {
         const errorData = await response.json()
         console.error(`❌ Failed to update order status:`, errorData)
+        return false // Başarısız
       }
     } catch (error) {
       console.error("💥 Error updating order:", error)
+      return false // Başarısız
+    }
+  }
+
+  // Sipariş durumunu güncelle ve tab'ı değiştir
+  const updateOrderStatusAndSwitchTab = async (orderId: string, newStatus: OrderStatus, targetTab: "pending" | "preparing" | "completed") => {
+    const success = await updateOrderStatus(orderId, newStatus)
+    if (success) {
+      // Duruma göre doğru veriyi çek
+      if (targetTab === "preparing") {
+        console.log(`🔄 Fetching PREPARING orders for tab switch...`)
+        await fetchOrders("PREPARING")
+      } else if (targetTab === "pending") {
+        console.log(`🔄 Fetching PENDING orders for tab switch...`)
+        await fetchOrders("PENDING")
+      } else if (targetTab === "completed") {
+        console.log(`🔄 Fetching COMPLETED orders for tab switch...`)
+        await fetchOrders("COMPLETED")
+      }
+
+      // Tab'ı değiştir
+      console.log(`🔄 Switching to ${targetTab} tab...`)
+      setActiveTab(targetTab)
     }
   }
 
@@ -631,11 +639,7 @@ export default function LiveOrdersPage() {
                             {order.status === "PENDING" && (
                               <Button
                                 variant="default"
-                                onClick={async () => {
-                                  await updateOrderStatus(order.id, "PREPARING")
-                                  // Switch to preparing tab after moving order
-                                  setActiveTab("preparing")
-                                }}
+                                onClick={() => updateOrderStatusAndSwitchTab(order.id, "PREPARING", "preparing")}
                               >
                                 <ChefHat className="h-4 w-4 mr-2" />
                                 Hazırla
@@ -776,7 +780,13 @@ export default function LiveOrdersPage() {
                             {order.status === "PREPARING" && (
                               <Button
                                 variant="default"
-                                onClick={() => updateOrderStatus(order.id, "READY")}
+                                onClick={async () => {
+                                  const success = await updateOrderStatus(order.id, "READY")
+                                  if (success) {
+                                    // Aynı tab'da kal, sadece veriyi yenile
+                                    await fetchOrders("PREPARING")
+                                  }
+                                }}
                               >
                                 <Clock className="h-4 w-4 mr-2" />
                                 Hazır İşaretle
@@ -787,11 +797,7 @@ export default function LiveOrdersPage() {
                             <Button
                               className="w-full"
                               variant="default"
-                              onClick={async () => {
-                                await updateOrderStatus(order.id, "COMPLETED")
-                                // Switch to completed tab after completing order
-                                setActiveTab("completed")
-                              }}
+                              onClick={() => updateOrderStatusAndSwitchTab(order.id, "COMPLETED", "completed")}
                             >
                               <Check className="h-4 w-4 mr-2" />
                               Tamamlandı
