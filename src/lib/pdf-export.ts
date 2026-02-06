@@ -2,6 +2,14 @@ import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 import { format } from "date-fns"
 import { tr } from "date-fns/locale"
+import { RobotoRegular } from "./fonts/roboto"
+
+// Register Roboto font for Turkish character support
+function registerFonts(doc: jsPDF) {
+  doc.addFileToVFS("Roboto-Regular.ttf", RobotoRegular)
+  doc.addFont("Roboto-Regular.ttf", "Roboto", "normal")
+  doc.setFont("Roboto", "normal")
+}
 
 interface AnalyticsData {
   totalCalls: number
@@ -52,7 +60,10 @@ function exportHotelPDF(data: AnalyticsData) {
     unit: "mm",
     format: "a4"
   })
-  
+
+  // Register Roboto font for Turkish character support
+  registerFonts(doc)
+
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
   const margin = 15
@@ -66,14 +77,14 @@ function exportHotelPDF(data: AnalyticsData) {
   // Header with logo area
   doc.setFillColor(59, 130, 246) // Blue
   doc.rect(0, 0, pageWidth, 40, "F")
-  
+
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(24)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "OTEL REZERVASYON RAPORU", pageWidth / 2, 20, { align: "center" })
   
   doc.setFontSize(12)
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Görüşme Metrikleri ve Analiz Raporu", pageWidth / 2, 28, { align: "center" })
   
   doc.setTextColor(0, 0, 0)
@@ -83,7 +94,7 @@ function exportHotelPDF(data: AnalyticsData) {
   const startDate = format(new Date(data.dateRange.start), "dd MMMM yyyy", { locale: tr })
   const endDate = format(new Date(data.dateRange.end), "dd MMMM yyyy", { locale: tr })
   doc.setFontSize(10)
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Rapor Tarih Aralığı: ${startDate} - ${endDate}`, margin, yPos)
   yPos += 8
 
@@ -95,12 +106,12 @@ function exportHotelPDF(data: AnalyticsData) {
   
   yPos += 8
   doc.setFontSize(14)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Yönetici Özeti", margin + 5, yPos)
   yPos += 8
 
   doc.setFontSize(10)
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   const totalSuccessful = data.successfulReservations
   const totalRejections = data.priceTooHigh + data.noRoomAvailable
   const successRate = data.totalCalls > 0 ? ((totalSuccessful / data.totalCalls) * 100).toFixed(1) : "0"
@@ -118,7 +129,7 @@ function exportHotelPDF(data: AnalyticsData) {
   // Detailed Metrics Section
   checkBreak(50)
   doc.setFontSize(16)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Detaylı Metrikler", margin, yPos)
   yPos += 10
 
@@ -129,28 +140,28 @@ function exportHotelPDF(data: AnalyticsData) {
 
   // Left column
   doc.setFontSize(11)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Başarı Metrikleri", leftCol, yPos)
   yPos += 7
 
   doc.setFontSize(10)
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Toplam Arama:`, leftCol, yPos)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, `${data.totalCalls}`, leftCol + 45, yPos)
   yPos += 6
 
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Başarılı Rezervasyon:`, leftCol, yPos)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   doc.setTextColor(34, 197, 94) // Green
   addText(doc, `${data.successfulReservations}`, leftCol + 45, yPos)
   doc.setTextColor(0, 0, 0)
   yPos += 6
 
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Dönüşüm Oranı:`, leftCol, yPos)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   doc.setTextColor(147, 51, 234) // Purple
   addText(doc, `%${data.conversionRate.toFixed(1)}`, leftCol + 45, yPos)
   doc.setTextColor(0, 0, 0)
@@ -159,42 +170,42 @@ function exportHotelPDF(data: AnalyticsData) {
   // Right column
   yPos = yPos - 19 // Reset to same level
   doc.setFontSize(11)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Red Metrikleri", rightCol, yPos)
   yPos += 7
 
   doc.setFontSize(10)
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Fiyat Yüksek Bulundu:`, rightCol, yPos)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   doc.setTextColor(249, 115, 22) // Orange
   addText(doc, `${data.priceTooHigh}`, rightCol + 50, yPos)
   doc.setTextColor(0, 0, 0)
   yPos += 6
 
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Yer Olmadığı İçin:`, rightCol, yPos)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   doc.setTextColor(239, 68, 68) // Red
   addText(doc, `${data.noRoomAvailable}`, rightCol + 50, yPos)
   doc.setTextColor(0, 0, 0)
   yPos += 6
 
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Toplam Red:`, rightCol, yPos)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, `${totalRejections}`, rightCol + 50, yPos)
   yPos += 12
 
   // Analysis Section
   checkBreak(40)
   doc.setFontSize(16)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Analiz ve Yorumlar", margin, yPos)
   yPos += 10
 
   doc.setFontSize(10)
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   
   // Performance analysis
   if (data.conversionRate >= 50) {
@@ -221,7 +232,7 @@ function exportHotelPDF(data: AnalyticsData) {
   // Daily Breakdown Table
   checkBreak(30)
   doc.setFontSize(16)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Günlük Detay Tablosu", margin, yPos)
   yPos += 10
 
@@ -243,6 +254,9 @@ function exportHotelPDF(data: AnalyticsData) {
     head: [["Tarih", "Toplam Arama", "Başarılı Rezervasyon", "Fiyat Yüksek", "Yer Yok", "Dönüşüm %"]],
     body: tableData,
     theme: "striped",
+    styles: {
+      font: "Roboto"
+    },
     headStyles: {
       fillColor: [59, 130, 246],
       textColor: [255, 255, 255],
@@ -271,7 +285,7 @@ function exportHotelPDF(data: AnalyticsData) {
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i)
     doc.setFontSize(8)
-    doc.setFont("helvetica", "normal")
+    doc.setFont("Roboto", "normal")
     doc.setTextColor(128, 128, 128)
     addText(
       doc,
@@ -295,7 +309,10 @@ function exportRestaurantPDF(data: AnalyticsData) {
     unit: "mm",
     format: "a4"
   })
-  
+
+  // Register Roboto font for Turkish character support
+  registerFonts(doc)
+
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
   const margin = 15
@@ -312,11 +329,11 @@ function exportRestaurantPDF(data: AnalyticsData) {
   
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(24)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "RESTORAN SİPARİŞ RAPORU", pageWidth / 2, 20, { align: "center" })
   
   doc.setFontSize(12)
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Görüşme Metrikleri ve Analiz Raporu", pageWidth / 2, 28, { align: "center" })
   
   doc.setTextColor(0, 0, 0)
@@ -326,7 +343,7 @@ function exportRestaurantPDF(data: AnalyticsData) {
   const startDate = format(new Date(data.dateRange.start), "dd MMMM yyyy", { locale: tr })
   const endDate = format(new Date(data.dateRange.end), "dd MMMM yyyy", { locale: tr })
   doc.setFontSize(10)
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Rapor Tarih Aralığı: ${startDate} - ${endDate}`, margin, yPos)
   yPos += 8
 
@@ -338,12 +355,12 @@ function exportRestaurantPDF(data: AnalyticsData) {
   
   yPos += 8
   doc.setFontSize(14)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Yönetici Özeti", margin + 5, yPos)
   yPos += 8
 
   doc.setFontSize(10)
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   const totalSuccessful = data.successfulOrders
   const totalRejections = data.priceTooHigh + data.productUnavailable
   const successRate = data.totalCalls > 0 ? ((totalSuccessful / data.totalCalls) * 100).toFixed(1) : "0"
@@ -361,7 +378,7 @@ function exportRestaurantPDF(data: AnalyticsData) {
   // Detailed Metrics Section
   checkBreak(50)
   doc.setFontSize(16)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Detaylı Metrikler", margin, yPos)
   yPos += 10
 
@@ -371,28 +388,28 @@ function exportRestaurantPDF(data: AnalyticsData) {
 
   // Left column
   doc.setFontSize(11)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Başarı Metrikleri", leftCol, yPos)
   yPos += 7
 
   doc.setFontSize(10)
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Toplam Arama:`, leftCol, yPos)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, `${data.totalCalls}`, leftCol + 45, yPos)
   yPos += 6
 
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Başarılı Sipariş:`, leftCol, yPos)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   doc.setTextColor(34, 197, 94) // Green
   addText(doc, `${data.successfulOrders}`, leftCol + 45, yPos)
   doc.setTextColor(0, 0, 0)
   yPos += 6
 
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Dönüşüm Oranı:`, leftCol, yPos)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   doc.setTextColor(147, 51, 234) // Purple
   addText(doc, `%${data.conversionRate.toFixed(1)}`, leftCol + 45, yPos)
   doc.setTextColor(0, 0, 0)
@@ -401,42 +418,42 @@ function exportRestaurantPDF(data: AnalyticsData) {
   // Right column
   yPos = yPos - 19 // Reset to same level
   doc.setFontSize(11)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Red Metrikleri", rightCol, yPos)
   yPos += 7
 
   doc.setFontSize(10)
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Fiyat Yüksek Bulundu:`, rightCol, yPos)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   doc.setTextColor(249, 115, 22) // Orange
   addText(doc, `${data.priceTooHigh}`, rightCol + 50, yPos)
   doc.setTextColor(0, 0, 0)
   yPos += 6
 
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Ürün Kalmadığı İçin:`, rightCol, yPos)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   doc.setTextColor(234, 179, 8) // Yellow
   addText(doc, `${data.productUnavailable}`, rightCol + 50, yPos)
   doc.setTextColor(0, 0, 0)
   yPos += 6
 
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   addText(doc, `Toplam Red:`, rightCol, yPos)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, `${totalRejections}`, rightCol + 50, yPos)
   yPos += 12
 
   // Analysis Section
   checkBreak(40)
   doc.setFontSize(16)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Analiz ve Yorumlar", margin, yPos)
   yPos += 10
 
   doc.setFontSize(10)
-  doc.setFont("helvetica", "normal")
+  doc.setFont("Roboto", "normal")
   
   // Performance analysis
   if (data.conversionRate >= 50) {
@@ -463,7 +480,7 @@ function exportRestaurantPDF(data: AnalyticsData) {
   // Daily Breakdown Table
   checkBreak(30)
   doc.setFontSize(16)
-  doc.setFont("helvetica", "bold")
+  doc.setFont("Roboto", "normal")
   addText(doc, "Günlük Detay Tablosu", margin, yPos)
   yPos += 10
 
@@ -485,6 +502,9 @@ function exportRestaurantPDF(data: AnalyticsData) {
     head: [["Tarih", "Toplam Arama", "Başarılı Sipariş", "Fiyat Yüksek", "Ürün Yok", "Dönüşüm %"]],
     body: tableData,
     theme: "striped",
+    styles: {
+      font: "Roboto"
+    },
     headStyles: {
       fillColor: [34, 197, 94],
       textColor: [255, 255, 255],
@@ -513,7 +533,7 @@ function exportRestaurantPDF(data: AnalyticsData) {
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i)
     doc.setFontSize(8)
-    doc.setFont("helvetica", "normal")
+    doc.setFont("Roboto", "normal")
     doc.setTextColor(128, 128, 128)
     addText(
       doc,
