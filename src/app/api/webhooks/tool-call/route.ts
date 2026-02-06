@@ -251,6 +251,7 @@ export async function POST(req: NextRequest) {
       include: {
         bot: {
           select: {
+            id: true,
             customTools: true,
             organizationId: true
           }
@@ -351,6 +352,7 @@ export async function POST(req: NextRequest) {
           include: {
             bot: {
               select: {
+                id: true,
                 customTools: true,
                 organizationId: true
               }
@@ -389,7 +391,7 @@ export async function POST(req: NextRequest) {
 
     // Find the tool definition
     let tools = (call.bot.customTools as any[]) || []
-    console.log(`[tool-call] Bot found - ID: ${call.bot.organizationId}, Tools count: ${tools.length}`)
+    console.log(`[tool-call] Bot found - ID: ${call.bot.id}, Organization ID: ${call.bot.organizationId}, Tools count: ${tools.length}`)
     console.log(`[tool-call] Bot tools:`, JSON.stringify(tools.map((t: any) => t.function?.name), null, 2))
     console.log(`[tool-call] Looking for tool: ${finalToolNameToUse}`)
     
@@ -1251,20 +1253,25 @@ async function executeBuiltInTool(
         }
 
         const organizationId = call.bot.organizationId
+        const botId = call.bot.id
         const section = args.section || "all"
+
+        console.log(`[get_hotel_info] Bot ID: ${botId}, Organization ID: ${organizationId}`)
 
         // Find bot-assigned user (customer)
         let customerId: string | null = null
-        if (call.bot?.id) {
+        if (botId) {
           const botAssignment = await prisma.botAssignment.findFirst({
-            where: { botId: call.bot.id },
+            where: { botId },
             include: { user: true }
           })
           customerId = botAssignment?.user?.id || null
+          console.log(`[get_hotel_info] Bot assignment found: ${botAssignment ? 'yes' : 'no'}, Customer ID: ${customerId}`)
         }
 
         if (!customerId) {
           // Fallback: Find first HOTEL customer in organization
+          console.log(`[get_hotel_info] No customer assigned to bot, searching for HOTEL customer in org...`)
           const hotelCustomer = await prisma.user.findFirst({
             where: {
               organizationId,
@@ -1272,13 +1279,16 @@ async function executeBuiltInTool(
             }
           })
           customerId = hotelCustomer?.id || null
+          console.log(`[get_hotel_info] Fallback HOTEL customer found: ${hotelCustomer ? 'yes' : 'no'}, Customer ID: ${customerId}`)
         }
 
         if (!customerId) {
+          console.error(`[get_hotel_info] No customer found for bot ${botId} in org ${organizationId}`)
           throw new Error("No customer found for this bot")
         }
 
         // Find hotel knowledge base for this customer
+        console.log(`[get_hotel_info] Searching for KB: orgId=${organizationId}, customerId=${customerId}`)
         const knowledgeBase = await prisma.knowledgeBase.findFirst({
           where: {
             organizationId,
@@ -1286,8 +1296,38 @@ async function executeBuiltInTool(
             customer: {
               customerType: "HOTEL"
             }
+          },
+          include: {
+            customer: {
+              select: {
+                id: true,
+                customerType: true
+              }
+            }
           }
         })
+
+        console.log(`[get_hotel_info] KB found: ${knowledgeBase ? 'yes' : 'no'}`)
+        if (knowledgeBase) {
+          console.log(`[get_hotel_info] KB ID: ${knowledgeBase.id}, Name: ${knowledgeBase.name}, Texts count: ${knowledgeBase.texts?.length || 0}`)
+        } else {
+          // Debug: List all KBs in organization
+          const allKBs = await prisma.knowledgeBase.findMany({
+            where: { organizationId },
+            select: {
+              id: true,
+              name: true,
+              customerId: true,
+              customer: {
+                select: {
+                  id: true,
+                  customerType: true
+                }
+              }
+            }
+          })
+          console.log(`[get_hotel_info] All KBs in org (${allKBs.length}):`, JSON.stringify(allKBs, null, 2))
+        }
 
         if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
           return {
