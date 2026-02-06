@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { getRetellClient, callRetellApi } from "@/lib/retell"
+import { callRetellApi } from "@/lib/retell"
 import { z } from "zod"
 import { updateBotPromptWithPricingPrompt } from "@/lib/bot-prompt-helper"
 
@@ -131,56 +131,14 @@ export async function PUT(
       targetCustomerId = targetCustomer.id
     }
 
-    // Update Retell KB if texts or name changed
+    // Retell KB güncellenmeyecek, sadece lokal kayıt güncellenecek
+    // Mevcut retellKnowledgeBaseId korunur (temp_ ile başlıyorsa değişmez)
     let retellKnowledgeBaseId = existingKB.retellKnowledgeBaseId
-    if (data.texts || data.name || data.enableAutoRefresh !== undefined) {
-      try {
-        // Convert JSON strings to readable text for Retell RAG
-        const textsToUse = data.texts || existingKB.texts
-        const retellTexts = textsToUse.map((text: string) => {
-          try {
-            // Try to parse JSON and convert to readable format
-            const parsed = JSON.parse(text)
-            return JSON.stringify(parsed, null, 2)
-          } catch {
-            // If not JSON, use as-is
-            return text
-          }
-        })
-        
-        // If KB doesn't exist in Retell (was temp), create it
-        if (!retellKnowledgeBaseId || retellKnowledgeBaseId.startsWith("temp_")) {
-          // Use SDK with type assertion since types may not match
-          const retellClient = await getRetellClient(organizationId)
-          const retellKB = await retellClient.knowledgeBase.create({
-            knowledge_base_name: data.name || existingKB.name,
-            texts: retellTexts,
-            enable_auto_refresh: data.enableAutoRefresh !== undefined ? data.enableAutoRefresh : existingKB.enableAutoRefresh,
-          } as any) as any
-          retellKnowledgeBaseId = retellKB.knowledge_base_id || retellKB.id
-          console.log(`[KB Update] Created Retell KB: ${retellKnowledgeBaseId}`)
-        } else {
-          // Update existing Retell KB using raw API (SDK may not have update method)
-          const updatePayload: any = {}
-          if (data.name) updatePayload.knowledge_base_name = data.name
-          if (data.texts) updatePayload.texts = retellTexts
-          if (data.enableAutoRefresh !== undefined) updatePayload.enable_auto_refresh = data.enableAutoRefresh
-          
-          if (Object.keys(updatePayload).length > 0) {
-            await callRetellApi(
-              "PATCH",
-              `/update-knowledge-base/${retellKnowledgeBaseId}`,
-              updatePayload,
-              organizationId
-            )
-            console.log(`[KB Update] Updated Retell KB: ${retellKnowledgeBaseId}`)
-          }
-        }
-      } catch (retellError: any) {
-        console.error("[KB Update] Failed to update Retell KB:", retellError)
-        // Continue with database update even if Retell update fails
-      }
+    if (!retellKnowledgeBaseId || retellKnowledgeBaseId.startsWith("temp_")) {
+      // Eğer temp ID varsa veya yoksa, yeni temp ID oluşturma (mevcut temp ID'yi koru)
+      retellKnowledgeBaseId = existingKB.retellKnowledgeBaseId || `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`
     }
+    console.log(`[KB Update] Lokal KB güncelleniyor (Retell'e senkronize edilmeyecek): ${retellKnowledgeBaseId}`)
 
     // Update in database
     const knowledgeBase = await prisma.knowledgeBase.update({
@@ -369,14 +327,22 @@ export async function DELETE(
           }
         }
 
-        // Delete KB from Retell
-        try {
-          const retellClient = await getRetellClient(organizationId)
-          await retellClient.knowledgeBase.delete(existingKB.retellKnowledgeBaseId)
-          console.log(`[KB Delete] Deleted KB from Retell: ${existingKB.retellKnowledgeBaseId}`)
-        } catch (retellError: any) {
-          console.warn(`[KB Delete] Failed to delete KB from Retell:`, retellError)
-          // Continue with database deletion even if Retell deletion fails
+        // Delete KB from Retell (only if it's a real Retell KB, not temp)
+        if (existingKB.retellKnowledgeBaseId && !existingKB.retellKnowledgeBaseId.startsWith("temp_")) {
+          try {
+            await callRetellApi(
+              "DELETE",
+              `/delete-knowledge-base/${existingKB.retellKnowledgeBaseId}`,
+              null,
+              organizationId
+            )
+            console.log(`[KB Delete] Deleted KB from Retell: ${existingKB.retellKnowledgeBaseId}`)
+          } catch (retellError: any) {
+            console.warn(`[KB Delete] Failed to delete KB from Retell:`, retellError)
+            // Continue with database deletion even if Retell deletion fails
+          }
+        } else {
+          console.log(`[KB Delete] Skipping Retell deletion (temp ID or no Retell KB): ${existingKB.retellKnowledgeBaseId}`)
         }
       } catch (error: any) {
         console.warn(`[KB Delete] Error cleaning up Retell KB assignments:`, error)
