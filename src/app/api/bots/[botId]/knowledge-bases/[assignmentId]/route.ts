@@ -74,14 +74,31 @@ export async function DELETE(
       throw new Error("Bot does not have an associated LLM ID")
     }
 
-    // Update LLM prompt on Retell (best effort, but local cleanup continues)
+    // Update Retell LLM: remove KB from knowledge_base_ids array
     try {
+      // Build updated knowledge_base_ids array (excluding the one being removed)
+      const knowledgeBaseIds = remainingAssignments
+        .filter(a => a.knowledgeBase.retellKnowledgeBaseId && !a.knowledgeBase.retellKnowledgeBaseId.startsWith("temp_"))
+        .map(a => ({
+          knowledge_base_id: a.knowledgeBase.retellKnowledgeBaseId,
+          top_k: a.topK,
+          filter_score: a.filterScore
+        }))
+
+      console.log(`[KB Unassign] Updating Retell LLM ${bot.retellLlmId} with remaining KB IDs:`, knowledgeBaseIds)
+
+      // Update Retell LLM with remaining KBs and updated prompt
       await callRetellApi(
         "PATCH",
         `/update-retell-llm/${bot.retellLlmId}`,
-        { general_prompt: updatedPrompt },
+        {
+          general_prompt: updatedPrompt,
+          knowledge_base_ids: knowledgeBaseIds
+        },
         organizationId
       )
+
+      console.log(`[KB Unassign] Successfully updated Retell LLM`)
     } catch (retellErr: any) {
       // Handle 404 errors when LLM no longer exists in Retell
       if (retellErr.message?.includes("404") || retellErr.message?.includes("not found")) {
@@ -89,7 +106,7 @@ export async function DELETE(
           `[KB Unassign] LLM not found in Retell for bot=${bot.id} llm=${bot.retellLlmId}, applying local cleanup only`
         )
       } else {
-        console.warn("[KB Unassign] Retell prompt update failed, applying local cleanup only", retellErr)
+        console.warn("[KB Unassign] Retell update failed, applying local cleanup only", retellErr)
       }
     }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { getRetellClient, callRetellApi } from "@/lib/retell"
 import { z } from "zod"
 import { updateBotPromptWithPricingPrompt } from "@/lib/bot-prompt-helper"
 
@@ -130,8 +131,56 @@ export async function PUT(
       targetCustomerId = targetCustomer.id
     }
 
-    // Skip Retell KB recreate; prompt injection will be handled per bot
+    // Update Retell KB if texts or name changed
     let retellKnowledgeBaseId = existingKB.retellKnowledgeBaseId
+    if (data.texts || data.name || data.enableAutoRefresh !== undefined) {
+      try {
+        const retellClient = await getRetellClient(organizationId)
+        
+        // Convert JSON strings to readable text for Retell RAG
+        const textsToUse = data.texts || existingKB.texts
+        const retellTexts = textsToUse.map((text: string) => {
+          try {
+            // Try to parse JSON and convert to readable format
+            const parsed = JSON.parse(text)
+            return JSON.stringify(parsed, null, 2)
+          } catch {
+            // If not JSON, use as-is
+            return text
+          }
+        })
+        
+        // If KB doesn't exist in Retell (was temp), create it
+        if (!retellKnowledgeBaseId || retellKnowledgeBaseId.startsWith("temp_")) {
+          const retellKB = await retellClient.knowledgeBase.create({
+            knowledge_base_name: data.name || existingKB.name,
+            texts: retellTexts,
+            enable_auto_refresh: data.enableAutoRefresh !== undefined ? data.enableAutoRefresh : existingKB.enableAutoRefresh,
+          })
+          retellKnowledgeBaseId = retellKB.knowledge_base_id || retellKB.id
+          console.log(`[KB Update] Created Retell KB: ${retellKnowledgeBaseId}`)
+        } else {
+          // Update existing Retell KB using raw API (SDK may not have update method)
+          const updatePayload: any = {}
+          if (data.name) updatePayload.knowledge_base_name = data.name
+          if (data.texts) updatePayload.texts = retellTexts
+          if (data.enableAutoRefresh !== undefined) updatePayload.enable_auto_refresh = data.enableAutoRefresh
+          
+          if (Object.keys(updatePayload).length > 0) {
+            await callRetellApi(
+              "PATCH",
+              `/update-knowledge-base/${retellKnowledgeBaseId}`,
+              updatePayload,
+              organizationId
+            )
+            console.log(`[KB Update] Updated Retell KB: ${retellKnowledgeBaseId}`)
+          }
+        }
+      } catch (retellError: any) {
+        console.error("[KB Update] Failed to update Retell KB:", retellError)
+        // Continue with database update even if Retell update fails
+      }
+    }
 
     // Update in database
     const knowledgeBase = await prisma.knowledgeBase.update({
@@ -261,7 +310,80 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 
-    // No longer removing KB blocks from prompts - tools handle data access
+    // Remove KB from all Retell LLMs that have it assigned
+    if (existingKB.retellKnowledgeBaseId && !existingKB.retellKnowledgeBaseId.startsWith("temp_")) {
+      try {
+        // Get all bots that have this KB assigned
+        const botsWithKB = await prisma.botKnowledgeBase.findMany({
+          where: { knowledgeBaseId: params.id },
+          include: {
+            bot: {
+              select: {
+                id: true,
+                retellLlmId: true
+              }
+            }
+          }
+        })
+
+        // Remove KB from each bot's Retell LLM
+        for (const assignment of botsWithKB) {
+          if (assignment.bot.retellLlmId) {
+            try {
+              // Get remaining KB assignments for this bot
+              const remainingAssignments = await prisma.botKnowledgeBase.findMany({
+                where: {
+                  botId: assignment.bot.id,
+                  knowledgeBaseId: { not: params.id }
+                },
+                include: {
+                  knowledgeBase: {
+                    select: {
+                      retellKnowledgeBaseId: true
+                    }
+                  }
+                }
+              })
+
+              // Build updated knowledge_base_ids array
+              const knowledgeBaseIds = remainingAssignments
+                .filter(a => a.knowledgeBase.retellKnowledgeBaseId && !a.knowledgeBase.retellKnowledgeBaseId.startsWith("temp_"))
+                .map(a => ({
+                  knowledge_base_id: a.knowledgeBase.retellKnowledgeBaseId,
+                  top_k: a.topK,
+                  filter_score: a.filterScore
+                }))
+
+              console.log(`[KB Delete] Removing KB from Retell LLM ${assignment.bot.retellLlmId}`)
+
+              await callRetellApi(
+                "PATCH",
+                `/update-retell-llm/${assignment.bot.retellLlmId}`,
+                { knowledge_base_ids: knowledgeBaseIds },
+                organizationId
+              )
+            } catch (botError: any) {
+              console.warn(`[KB Delete] Failed to remove KB from bot ${assignment.bot.id}:`, botError)
+              // Continue with deletion even if Retell update fails
+            }
+          }
+        }
+
+        // Delete KB from Retell
+        try {
+          const retellClient = await getRetellClient(organizationId)
+          await retellClient.knowledgeBase.delete(existingKB.retellKnowledgeBaseId)
+          console.log(`[KB Delete] Deleted KB from Retell: ${existingKB.retellKnowledgeBaseId}`)
+        } catch (retellError: any) {
+          console.warn(`[KB Delete] Failed to delete KB from Retell:`, retellError)
+          // Continue with database deletion even if Retell deletion fails
+        }
+      } catch (error: any) {
+        console.warn(`[KB Delete] Error cleaning up Retell KB assignments:`, error)
+        // Continue with database deletion even if Retell cleanup fails
+      }
+    }
+
     // Delete from database (cascade will remove BotKnowledgeBase entries)
     await prisma.knowledgeBase.delete({
       where: { id: params.id }

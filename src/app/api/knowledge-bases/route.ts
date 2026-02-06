@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { getRetellClient } from "@/lib/retell"
 import { z } from "zod"
 
 
@@ -102,8 +103,41 @@ export async function POST(req: NextRequest) {
       targetCustomerId = targetCustomer.id
     }
 
-    // Retell KB entegrasyonunu devre dışı bıraktık, lokal ID kullan
-    const retellId = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`
+    // Create KB in Retell
+    // Convert JSON strings to readable text for Retell RAG
+    const retellTexts = data.texts.map(text => {
+      try {
+        // Try to parse JSON and convert to readable format
+        const parsed = JSON.parse(text)
+        // Convert JSON object to readable text format
+        return JSON.stringify(parsed, null, 2)
+      } catch {
+        // If not JSON, use as-is
+        return text
+      }
+    })
+
+    let retellId: string
+    try {
+      const retellClient = await getRetellClient(organizationId)
+      const retellKB = await retellClient.knowledgeBase.create({
+        knowledge_base_name: data.name,
+        texts: retellTexts,
+        enable_auto_refresh: data.enableAutoRefresh ?? true,
+      })
+      
+      retellId = retellKB.knowledge_base_id || retellKB.id
+      if (!retellId) {
+        throw new Error("Retell KB oluşturuldu ama ID döndürülmedi")
+      }
+      console.log(`[KB Create] Retell KB oluşturuldu: ${retellId}`)
+    } catch (retellError: any) {
+      console.error("[KB Create] Retell KB oluşturma hatası:", retellError)
+      return NextResponse.json(
+        { error: "Retell bilgi bankası oluşturulamadı", details: retellError.message },
+        { status: 500 }
+      )
+    }
 
     const knowledgeBase = await prisma.knowledgeBase.create({
       data: {

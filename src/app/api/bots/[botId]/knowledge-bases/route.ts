@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { callRetellApi } from "@/lib/retell"
 import { z } from "zod"
 import { updateBotPromptWithPricingPrompt } from "@/lib/bot-prompt-helper"
 
@@ -127,6 +128,57 @@ export async function POST(
         knowledgeBase: true
       }
     })
+
+    // Update Retell LLM with KB assignment
+    if (bot.retellLlmId && kb.retellKnowledgeBaseId && !kb.retellKnowledgeBaseId.startsWith("temp_")) {
+      try {
+        // Get all current KB assignments for this bot
+        const allAssignments = await prisma.botKnowledgeBase.findMany({
+          where: { botId: params.botId },
+          include: {
+            knowledgeBase: {
+              select: {
+                retellKnowledgeBaseId: true
+              }
+            }
+          }
+        })
+
+        // Build knowledge_base_ids array for Retell
+        const knowledgeBaseIds = allAssignments
+          .filter(a => a.knowledgeBase.retellKnowledgeBaseId && !a.knowledgeBase.retellKnowledgeBaseId.startsWith("temp_"))
+          .map(a => ({
+            knowledge_base_id: a.knowledgeBase.retellKnowledgeBaseId,
+            top_k: a.topK,
+            filter_score: a.filterScore
+          }))
+
+        console.log(`[KB Assign] Updating Retell LLM ${bot.retellLlmId} with KB IDs:`, knowledgeBaseIds)
+
+        // Update Retell LLM
+        await callRetellApi(
+          "PATCH",
+          `/update-retell-llm/${bot.retellLlmId}`,
+          {
+            knowledge_base_ids: knowledgeBaseIds
+          },
+          organizationId
+        )
+
+        console.log(`[KB Assign] Successfully updated Retell LLM with KB assignment`)
+      } catch (retellError: any) {
+        console.error("[KB Assign] Failed to update Retell LLM:", retellError)
+        // Don't fail assignment if Retell update fails - local assignment is still valid
+        // User can sync manually later
+      }
+    } else {
+      if (!bot.retellLlmId) {
+        console.warn(`[KB Assign] Bot ${params.botId} has no retellLlmId, skipping Retell update`)
+      }
+      if (!kb.retellKnowledgeBaseId || kb.retellKnowledgeBaseId.startsWith("temp_")) {
+        console.warn(`[KB Assign] KB ${data.knowledgeBaseId} has invalid retellKnowledgeBaseId (${kb.retellKnowledgeBaseId}), skipping Retell update`)
+      }
+    }
 
     // Update bot prompt with pricingPrompt if KB belongs to HOTEL customer
     if (kb.customerId) {
