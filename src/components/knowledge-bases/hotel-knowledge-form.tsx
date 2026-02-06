@@ -299,14 +299,18 @@ export default function HotelKnowledgeForm({
         body: JSON.stringify(payload)
       })
 
+      const responseData = await response.json()
+
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to save knowledge base")
+        const errorMsg = responseData.error || "Failed to save knowledge base"
+        const details = responseData.details ? `: ${responseData.details}` : ""
+        throw new Error(`${errorMsg}${details}`)
       }
 
       onSuccess()
     } catch (err: any) {
-      setError(err.message)
+      console.error("[HotelKnowledgeForm] Submit error:", err)
+      setError(err.message || "Bir hata oluştu. Lütfen tekrar deneyin.")
     } finally {
       setIsSubmitting(false)
     }

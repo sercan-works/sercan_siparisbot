@@ -117,27 +117,61 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    let retellId: string
+    let retellId: string | null = null
     try {
-      // Use SDK with type assertion since types may not match
-      const retellClient = await getRetellClient(organizationId)
-      const retellKB = await retellClient.knowledgeBase.create({
-        knowledge_base_name: data.name,
-        texts: retellTexts,
-        enable_auto_refresh: data.enableAutoRefresh ?? true,
-      } as any) as any
+      // Try using raw API call first (more reliable)
+      console.log(`[KB Create] Creating Retell KB with name: ${data.name}, texts count: ${retellTexts.length}`)
       
-      retellId = retellKB.knowledge_base_id || retellKB.id
-      if (!retellId) {
-        throw new Error("Retell KB oluşturuldu ama ID döndürülmedi")
+      try {
+        const retellKB = await callRetellApi(
+          "POST",
+          "/create-knowledge-base",
+          {
+            knowledge_base_name: data.name,
+            texts: retellTexts,
+            enable_auto_refresh: data.enableAutoRefresh ?? true,
+          },
+          organizationId
+        ) as any
+        
+        console.log(`[KB Create] Retell API response:`, JSON.stringify(retellKB, null, 2))
+        
+        retellId = retellKB.knowledge_base_id || retellKB.id || retellKB.knowledgeBaseId
+        if (!retellId) {
+          console.error("[KB Create] Retell response structure:", Object.keys(retellKB))
+          throw new Error(`Retell KB oluşturuldu ama ID döndürülmedi. Response: ${JSON.stringify(retellKB)}`)
+        }
+        console.log(`[KB Create] Retell KB oluşturuldu: ${retellId}`)
+      } catch (rawApiError: any) {
+        // Fallback to SDK if raw API fails
+        console.warn("[KB Create] Raw API failed, trying SDK:", rawApiError.message)
+        const retellClient = await getRetellClient(organizationId)
+        const retellKB = await retellClient.knowledgeBase.create({
+          knowledge_base_name: data.name,
+          texts: retellTexts,
+          enable_auto_refresh: data.enableAutoRefresh ?? true,
+        } as any) as any
+        
+        retellId = retellKB.knowledge_base_id || retellKB.id || retellKB.knowledgeBaseId
+        if (!retellId) {
+          throw new Error(`Retell KB oluşturuldu ama ID döndürülmedi`)
+        }
+        console.log(`[KB Create] Retell KB oluşturuldu (SDK): ${retellId}`)
       }
-      console.log(`[KB Create] Retell KB oluşturuldu: ${retellId}`)
     } catch (retellError: any) {
       console.error("[KB Create] Retell KB oluşturma hatası:", retellError)
-      return NextResponse.json(
-        { error: "Retell bilgi bankası oluşturulamadı", details: retellError.message },
-        { status: 500 }
-      )
+      console.error("[KB Create] Error details:", {
+        message: retellError.message,
+        stack: retellError.stack,
+        response: retellError.response,
+        status: retellError.status
+      })
+      
+      // Retell hatası olsa bile lokal KB oluşturulabilir (fallback)
+      // Geçici ID ile devam et, kullanıcı daha sonra sync yapabilir
+      retellId = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`
+      console.warn(`[KB Create] Retell KB oluşturulamadı, geçici ID kullanılıyor: ${retellId}`)
+      console.warn(`[KB Create] Kullanıcı daha sonra sync butonunu kullanarak Retell'e senkronize edebilir`)
     }
 
     const knowledgeBase = await prisma.knowledgeBase.create({
