@@ -926,23 +926,35 @@ async function executeBuiltInTool(
         
         // Find bot-assigned user (customer)
         let customerId: string | null = null
+        let assignedCustomerType: string | null = null
+        
         if (call.bot?.id) {
           const botAssignment = await prisma.botAssignment.findFirst({
             where: { botId: call.bot.id },
-            include: { user: true }
+            include: { 
+              user: {
+                select: {
+                  id: true,
+                  customerType: true
+                }
+              }
+            }
           })
           customerId = botAssignment?.user?.id || null
+          assignedCustomerType = botAssignment?.user?.customerType || null
         }
 
-        if (!customerId) {
-          // Fallback: Find first HOTEL customer in organization
+        // If assigned customer is not HOTEL type, search for HOTEL customer
+        if (!customerId || assignedCustomerType !== "HOTEL") {
           const hotelCustomer = await prisma.user.findFirst({
             where: {
               organizationId,
               customerType: "HOTEL"
             }
           })
-          customerId = hotelCustomer?.id || null
+          if (hotelCustomer) {
+            customerId = hotelCustomer.id
+          }
         }
 
         if (!customerId) {
@@ -1111,23 +1123,35 @@ async function executeBuiltInTool(
         
         // Find bot-assigned user (customer)
         let customerId: string | null = null
+        let assignedCustomerType: string | null = null
+        
         if (call.bot?.id) {
           const botAssignment = await prisma.botAssignment.findFirst({
             where: { botId: call.bot.id },
-            include: { user: true }
+            include: { 
+              user: {
+                select: {
+                  id: true,
+                  customerType: true
+                }
+              }
+            }
           })
           customerId = botAssignment?.user?.id || null
+          assignedCustomerType = botAssignment?.user?.customerType || null
         }
 
-        if (!customerId) {
-          // Fallback: Find first HOTEL customer in organization
+        // If assigned customer is not HOTEL type, search for HOTEL customer
+        if (!customerId || assignedCustomerType !== "HOTEL") {
           const hotelCustomer = await prisma.user.findFirst({
             where: {
               organizationId,
               customerType: "HOTEL"
             }
           })
-          customerId = hotelCustomer?.id || null
+          if (hotelCustomer) {
+            customerId = hotelCustomer.id
+          }
         }
 
         if (!customerId) {
@@ -1260,26 +1284,40 @@ async function executeBuiltInTool(
 
         // Find bot-assigned user (customer)
         let customerId: string | null = null
+        let assignedCustomerType: string | null = null
+        
         if (botId) {
           const botAssignment = await prisma.botAssignment.findFirst({
             where: { botId },
-            include: { user: true }
+            include: { 
+              user: {
+                select: {
+                  id: true,
+                  customerType: true
+                }
+              }
+            }
           })
           customerId = botAssignment?.user?.id || null
-          console.log(`[get_hotel_info] Bot assignment found: ${botAssignment ? 'yes' : 'no'}, Customer ID: ${customerId}`)
+          assignedCustomerType = botAssignment?.user?.customerType || null
+          console.log(`[get_hotel_info] Bot assignment found: ${botAssignment ? 'yes' : 'no'}, Customer ID: ${customerId}, Customer Type: ${assignedCustomerType}`)
         }
 
-        if (!customerId) {
-          // Fallback: Find first HOTEL customer in organization
-          console.log(`[get_hotel_info] No customer assigned to bot, searching for HOTEL customer in org...`)
+        // If assigned customer is not HOTEL type, search for HOTEL customer
+        if (!customerId || assignedCustomerType !== "HOTEL") {
+          console.log(`[get_hotel_info] ${customerId ? `Assigned customer is ${assignedCustomerType}, not HOTEL` : 'No customer assigned to bot'}, searching for HOTEL customer in org...`)
           const hotelCustomer = await prisma.user.findFirst({
             where: {
               organizationId,
               customerType: "HOTEL"
             }
           })
-          customerId = hotelCustomer?.id || null
-          console.log(`[get_hotel_info] Fallback HOTEL customer found: ${hotelCustomer ? 'yes' : 'no'}, Customer ID: ${customerId}`)
+          if (hotelCustomer) {
+            customerId = hotelCustomer.id
+            console.log(`[get_hotel_info] Found HOTEL customer: ${customerId}`)
+          } else {
+            console.log(`[get_hotel_info] No HOTEL customer found in organization`)
+          }
         }
 
         if (!customerId) {
@@ -1525,23 +1563,35 @@ async function executeBuiltInTool(
 
         // Find bot-assigned user (customer)
         let customerId: string | null = null
+        let assignedCustomerType: string | null = null
+        
         if (call.bot?.id) {
           const botAssignment = await prisma.botAssignment.findFirst({
             where: { botId: call.bot.id },
-            include: { user: true }
+            include: { 
+              user: {
+                select: {
+                  id: true,
+                  customerType: true
+                }
+              }
+            }
           })
           customerId = botAssignment?.user?.id || null
+          assignedCustomerType = botAssignment?.user?.customerType || null
         }
 
-        if (!customerId) {
-          // Fallback: Find first HOTEL customer in organization
+        // If assigned customer is not HOTEL type, search for HOTEL customer
+        if (!customerId || assignedCustomerType !== "HOTEL") {
           const hotelCustomer = await prisma.user.findFirst({
             where: {
               organizationId,
               customerType: "HOTEL"
             }
           })
-          customerId = hotelCustomer?.id || null
+          if (hotelCustomer) {
+            customerId = hotelCustomer.id
+          }
         }
 
         if (!customerId) {
@@ -1631,23 +1681,35 @@ async function executeBuiltInTool(
 
         // Find bot-assigned user (customer)
         let customerId: string | null = null
+        let assignedCustomerType: string | null = null
+        
         if (call.bot?.id) {
           const botAssignment = await prisma.botAssignment.findFirst({
             where: { botId: call.bot.id },
-            include: { user: true }
+            include: { 
+              user: {
+                select: {
+                  id: true,
+                  customerType: true
+                }
+              }
+            }
           })
           customerId = botAssignment?.user?.id || null
+          assignedCustomerType = botAssignment?.user?.customerType || null
         }
 
-        if (!customerId) {
-          // Fallback: Find first HOTEL customer in organization
+        // If assigned customer is not HOTEL type, search for HOTEL customer
+        if (!customerId || assignedCustomerType !== "HOTEL") {
           const hotelCustomer = await prisma.user.findFirst({
             where: {
               organizationId,
               customerType: "HOTEL"
             }
           })
-          customerId = hotelCustomer?.id || null
+          if (hotelCustomer) {
+            customerId = hotelCustomer.id
+          }
         }
 
         if (!customerId) {
@@ -1755,12 +1817,26 @@ async function executeBuiltInTool(
         if (call.bot?.id) {
           const botAssignment = await prisma.botAssignment.findFirst({
             where: { botId: call.bot.id },
-            include: { user: true }
+            include: { 
+              user: {
+                select: {
+                  id: true,
+                  customerType: true,
+                  email: true,
+                  name: true
+                }
+              }
+            }
           })
           
-          if (botAssignment) {
-            assignedUser = botAssignment.user
-            console.log("[create_reservation] Found user from bot assignment:", assignedUser.id)
+          if (botAssignment?.user) {
+            // Only use assigned user if they are HOTEL type
+            if (botAssignment.user.customerType === "HOTEL") {
+              assignedUser = botAssignment.user
+              console.log("[create_reservation] Found HOTEL user from bot assignment:", assignedUser.id)
+            } else {
+              console.log(`[create_reservation] Assigned user is ${botAssignment.user.customerType}, not HOTEL, searching for HOTEL customer...`)
+            }
           }
         }
         
