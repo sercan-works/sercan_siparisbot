@@ -968,15 +968,41 @@ async function executeBuiltInTool(
         endDate.setHours(0, 0, 0, 0)
 
         // Get pricing data from Knowledge Base
-        const knowledgeBase = await prisma.knowledgeBase.findFirst({
+        // First try to find KB for this specific customer
+        let knowledgeBase = await prisma.knowledgeBase.findFirst({
           where: {
             organizationId,
-            customerId,
+            customerId
+          },
+          include: {
             customer: {
-              customerType: "HOTEL"
+              select: {
+                id: true,
+                customerType: true
+              }
             }
           }
         })
+
+        // If KB not found or customer is not HOTEL, search for any HOTEL KB in org
+        if (!knowledgeBase || knowledgeBase.customer?.customerType !== "HOTEL") {
+          knowledgeBase = await prisma.knowledgeBase.findFirst({
+            where: {
+              organizationId,
+              customer: {
+                customerType: "HOTEL"
+              }
+            },
+            include: {
+              customer: {
+                select: {
+                  id: true,
+                  customerType: true
+                }
+              }
+            }
+          })
+        }
 
         if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
       return {
@@ -1159,15 +1185,41 @@ async function executeBuiltInTool(
         }
 
         // Get room types from Knowledge Base
-        const knowledgeBase = await prisma.knowledgeBase.findFirst({
+        // First try to find KB for this specific customer
+        let knowledgeBase = await prisma.knowledgeBase.findFirst({
           where: {
             organizationId,
-            customerId,
+            customerId
+          },
+          include: {
             customer: {
-              customerType: "HOTEL"
+              select: {
+                id: true,
+                customerType: true
+              }
             }
           }
         })
+
+        // If KB not found or customer is not HOTEL, search for any HOTEL KB in org
+        if (!knowledgeBase || knowledgeBase.customer?.customerType !== "HOTEL") {
+          knowledgeBase = await prisma.knowledgeBase.findFirst({
+            where: {
+              organizationId,
+              customer: {
+                customerType: "HOTEL"
+              }
+            },
+            include: {
+              customer: {
+                select: {
+                  id: true,
+                  customerType: true
+                }
+              }
+            }
+          })
+        }
 
         if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
           return {
@@ -1326,14 +1378,12 @@ async function executeBuiltInTool(
         }
 
         // Find hotel knowledge base for this customer
+        // First try to find KB for this specific customer
         console.log(`[get_hotel_info] Searching for KB: orgId=${organizationId}, customerId=${customerId}`)
-        const knowledgeBase = await prisma.knowledgeBase.findFirst({
+        let knowledgeBase = await prisma.knowledgeBase.findFirst({
           where: {
             organizationId,
-            customerId,
-            customer: {
-              customerType: "HOTEL"
-            }
+            customerId
           },
           include: {
             customer: {
@@ -1344,6 +1394,30 @@ async function executeBuiltInTool(
             }
           }
         })
+
+        // If KB found but customer type is not HOTEL, search for any HOTEL KB in org
+        if (!knowledgeBase || knowledgeBase.customer?.customerType !== "HOTEL") {
+          console.log(`[get_hotel_info] KB not found for customer ${customerId} or customer is not HOTEL, searching for any HOTEL KB in org...`)
+          knowledgeBase = await prisma.knowledgeBase.findFirst({
+            where: {
+              organizationId,
+              customer: {
+                customerType: "HOTEL"
+              }
+            },
+            include: {
+              customer: {
+                select: {
+                  id: true,
+                  customerType: true
+                }
+              }
+            }
+          })
+          if (knowledgeBase) {
+            console.log(`[get_hotel_info] Found HOTEL KB: ${knowledgeBase.id} for customer: ${knowledgeBase.customer?.id}`)
+          }
+        }
 
         console.log(`[get_hotel_info] KB found: ${knowledgeBase ? 'yes' : 'no'}`)
         if (knowledgeBase) {
@@ -1599,15 +1673,41 @@ async function executeBuiltInTool(
         }
 
         // Find hotel knowledge base for this customer
-        const knowledgeBase = await prisma.knowledgeBase.findFirst({
+        // First try to find KB for this specific customer
+        let knowledgeBase = await prisma.knowledgeBase.findFirst({
           where: {
             organizationId,
-            customerId,
+            customerId
+          },
+          include: {
             customer: {
-              customerType: "HOTEL"
+              select: {
+                id: true,
+                customerType: true
+              }
             }
           }
         })
+
+        // If KB not found or customer is not HOTEL, search for any HOTEL KB in org
+        if (!knowledgeBase || knowledgeBase.customer?.customerType !== "HOTEL") {
+          knowledgeBase = await prisma.knowledgeBase.findFirst({
+            where: {
+              organizationId,
+              customer: {
+                customerType: "HOTEL"
+              }
+            },
+            include: {
+              customer: {
+                select: {
+                  id: true,
+                  customerType: true
+                }
+              }
+            }
+          })
+        }
 
         if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
           return {
@@ -1717,15 +1817,41 @@ async function executeBuiltInTool(
         }
 
         // Find hotel knowledge base for this customer
-        const knowledgeBase = await prisma.knowledgeBase.findFirst({
+        // First try to find KB for this specific customer
+        let knowledgeBase = await prisma.knowledgeBase.findFirst({
           where: {
             organizationId,
-            customerId,
+            customerId
+          },
+          include: {
             customer: {
-              customerType: "HOTEL"
+              select: {
+                id: true,
+                customerType: true
+              }
             }
           }
         })
+
+        // If KB not found or customer is not HOTEL, search for any HOTEL KB in org
+        if (!knowledgeBase || knowledgeBase.customer?.customerType !== "HOTEL") {
+          knowledgeBase = await prisma.knowledgeBase.findFirst({
+            where: {
+              organizationId,
+              customer: {
+                customerType: "HOTEL"
+              }
+            },
+            include: {
+              customer: {
+                select: {
+                  id: true,
+                  customerType: true
+                }
+              }
+            }
+          })
+        }
 
         if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
           return {
