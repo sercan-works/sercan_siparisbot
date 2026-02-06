@@ -135,8 +135,6 @@ export async function PUT(
     let retellKnowledgeBaseId = existingKB.retellKnowledgeBaseId
     if (data.texts || data.name || data.enableAutoRefresh !== undefined) {
       try {
-        const retellClient = await getRetellClient(organizationId)
-        
         // Convert JSON strings to readable text for Retell RAG
         const textsToUse = data.texts || existingKB.texts
         const retellTexts = textsToUse.map((text: string) => {
@@ -152,11 +150,13 @@ export async function PUT(
         
         // If KB doesn't exist in Retell (was temp), create it
         if (!retellKnowledgeBaseId || retellKnowledgeBaseId.startsWith("temp_")) {
+          // Use SDK with type assertion since types may not match
+          const retellClient = await getRetellClient(organizationId)
           const retellKB = await retellClient.knowledgeBase.create({
             knowledge_base_name: data.name || existingKB.name,
             texts: retellTexts,
             enable_auto_refresh: data.enableAutoRefresh !== undefined ? data.enableAutoRefresh : existingKB.enableAutoRefresh,
-          })
+          } as any) as any
           retellKnowledgeBaseId = retellKB.knowledge_base_id || retellKB.id
           console.log(`[KB Update] Created Retell KB: ${retellKnowledgeBaseId}`)
         } else {

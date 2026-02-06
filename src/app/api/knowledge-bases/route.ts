@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { getRetellClient } from "@/lib/retell"
+import { getRetellClient, callRetellApi } from "@/lib/retell"
 import { z } from "zod"
 
 
@@ -119,12 +119,13 @@ export async function POST(req: NextRequest) {
 
     let retellId: string
     try {
+      // Use SDK with type assertion since types may not match
       const retellClient = await getRetellClient(organizationId)
       const retellKB = await retellClient.knowledgeBase.create({
         knowledge_base_name: data.name,
         texts: retellTexts,
         enable_auto_refresh: data.enableAutoRefresh ?? true,
-      })
+      } as any) as any
       
       retellId = retellKB.knowledge_base_id || retellKB.id
       if (!retellId) {
