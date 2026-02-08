@@ -504,9 +504,20 @@ export async function POST(req: NextRequest) {
         }
       } else {
         // Built-in tool execution logic
+        // Atanan agent_id otoriterdir: KB verisi için agent_id ile bot bulunur (call.bot yanlış olabilir, örn. playground)
+        let callForTools = call
+        if (agentId) {
+          const agentBot = await prisma.bot.findUnique({
+            where: { retellAgentId: agentId },
+            select: { id: true, organizationId: true, customTools: true }
+          })
+          if (agentBot) {
+            callForTools = { ...call, bot: agentBot }
+            console.log(`[tool-call] Using bot from agent_id for KB resolution: ${agentBot.id}`)
+          }
+        }
         console.log(`[tool-call] Executing built-in tool: ${finalToolNameToUse}`)
-        // Pass body to access transcript if call object doesn't have it
-        result = await executeBuiltInTool(finalToolNameToUse, toolArgs, call, body)
+        result = await executeBuiltInTool(finalToolNameToUse, toolArgs, callForTools, body)
         console.log(`[tool-call] Built-in tool result:`, result)
       }
 
@@ -559,43 +570,22 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Resolve the correct hotel KnowledgeBase for a bot.
- * Priority: 1) BotKnowledgeBase (bot-linked KB with HOTEL customer), 2) BotAssignment (bot assigned to HOTEL customer).
- * No fallback to "any HOTEL in org" - prevents cross-hotel data leakage.
+ * Agent'a atanmış bilgi bankasını bulur. Atanan agent id → o agent'e atanmış KB.
+ * Sadece BotKnowledgeBase kullanılır - agent'a atanmış KB o agent'e ait veridir.
  */
-async function resolveHotelKnowledgeBaseForBot(botId: string, organizationId: string) {
-  // 1) BotKnowledgeBase: Bot'a atanmış KB'lerden HOTEL customer tipinde olan
+async function resolveKnowledgeBaseForBot(botId: string) {
   const botKbLinks = await prisma.botKnowledgeBase.findMany({
     where: { botId },
-    include: {
-      knowledgeBase: {
-        include: { customer: { select: { id: true, customerType: true } } }
-      }
-    }
+    include: { knowledgeBase: true }
   })
-  const hotelKb = botKbLinks.find(
-    (link) => link.knowledgeBase?.customer?.customerType === "HOTEL"
-  )?.knowledgeBase
-  if (hotelKb?.texts?.length) return hotelKb
-
-  // 2) BotAssignment: Bot HOTEL müşterisine atanmışsa o müşterinin KB'si
-  const assignment = await prisma.botAssignment.findFirst({
-    where: { botId },
-    include: { user: { select: { id: true, customerType: true } } }
-  })
-  if (assignment?.user?.customerType === "HOTEL") {
-    const kb = await prisma.knowledgeBase.findFirst({
-      where: {
-        organizationId,
-        customerId: assignment.user.id,
-        customer: { customerType: "HOTEL" }
-      }
-    })
-    if (kb?.texts?.length) return kb
-  }
-
-  // 3) Fallback YOK - null dön (cross-hotel veri karışımı engellenir)
+  const kb = botKbLinks[0]?.knowledgeBase
+  if (kb?.texts?.length) return kb
   return null
+}
+
+/** @deprecated Use resolveKnowledgeBaseForBot */
+async function resolveHotelKnowledgeBaseForBot(botId: string, _organizationId: string) {
+  return resolveKnowledgeBaseForBot(botId)
 }
 
 /**
@@ -1297,57 +1287,17 @@ async function executeBuiltInTool(
       }
 
     case "get_restaurant_info":
-      // Get restaurant information from KB directly (no internal fetch)
+      // Get restaurant information from KB directly - agent'a atanmış KB kullanılır
       try {
         console.log("[get_restaurant_info] Starting with args:", JSON.stringify(args, null, 2))
         
-        // Validate call context
-        if (!call) {
-          throw new Error("Call record is missing")
+        if (!call || !call.bot || !call.bot.organizationId) {
+          throw new Error("Call context missing")
         }
 
-        if (!call.bot || !call.bot.organizationId) {
-          throw new Error("Call context missing organization/bot info")
-        }
-
-        const organizationId = call.bot.organizationId
+        const botId = call.bot.id
         const section = args.section || "all"
-
-        // Find bot-assigned user (customer)
-        let customerId: string | null = null
-        if (call.bot?.id) {
-          const botAssignment = await prisma.botAssignment.findFirst({
-            where: { botId: call.bot.id },
-            include: { user: true }
-          })
-          customerId = botAssignment?.user?.id || null
-        }
-
-        if (!customerId) {
-          // Fallback: Find first RESTAURANT customer in organization
-          const restaurantCustomer = await prisma.user.findFirst({
-            where: {
-              organizationId,
-              customerType: "RESTAURANT"
-            }
-          })
-          customerId = restaurantCustomer?.id || null
-        }
-
-        if (!customerId) {
-          throw new Error("No customer found for this bot")
-        }
-
-        // Find restaurant knowledge base for this customer
-        const knowledgeBase = await prisma.knowledgeBase.findFirst({
-          where: {
-            organizationId,
-            customerId,
-            customer: {
-              customerType: "RESTAURANT"
-            }
-          }
-        })
+        const knowledgeBase = await resolveKnowledgeBaseForBot(botId)
 
         if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
           return {
