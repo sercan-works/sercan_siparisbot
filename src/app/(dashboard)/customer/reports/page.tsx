@@ -32,6 +32,8 @@ interface AnalyticsData {
       totalCalls: number
       successfulReservations: number
       successfulOrders: number
+      totalReservationPrice?: number
+      totalOrderPrice?: number
       priceTooHigh: number
       noRoomAvailable: number
       productUnavailable: number

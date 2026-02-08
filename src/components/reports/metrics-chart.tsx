@@ -11,12 +11,19 @@ interface DailyMetric {
     totalCalls: number
     successfulReservations: number
     successfulOrders: number
+    totalReservationPrice?: number
+    totalOrderPrice?: number
     priceTooHigh: number
     noRoomAvailable: number
     productUnavailable: number
     conversionRate: number
     customerSatisfactionRate?: number
   }
+}
+
+function formatPrice(value: number | undefined): string {
+  if (value == null || value === 0) return "—"
+  return `₺${value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 interface MetricsChartProps {
@@ -75,8 +82,14 @@ export default function MetricsChart({ dailyBreakdown, isLoading, customerType }
                 {(!customerType || isHotel) && (
                   <th className="text-right p-2">Rezervasyon</th>
                 )}
+                {(!customerType || isHotel) && (
+                  <th className="text-right p-2">Rez. Toplam (₺)</th>
+                )}
                 {(!customerType || isRestaurant) && (
                   <th className="text-right p-2">Sipariş</th>
+                )}
+                {(!customerType || isRestaurant) && (
+                  <th className="text-right p-2">Sip. Toplam (₺)</th>
                 )}
                 <th className="text-right p-2">Fiyat Yüksek</th>
                 {(!customerType || isHotel) && (
@@ -99,8 +112,14 @@ export default function MetricsChart({ dailyBreakdown, isLoading, customerType }
                     {(!customerType || isHotel) && (
                       <td className="text-right p-2 text-green-600">{day.metrics.successfulReservations}</td>
                     )}
+                    {(!customerType || isHotel) && (
+                      <td className="text-right p-2 font-medium text-green-700">{formatPrice(day.metrics.totalReservationPrice)}</td>
+                    )}
                     {(!customerType || isRestaurant) && (
                       <td className="text-right p-2 text-blue-600">{day.metrics.successfulOrders}</td>
+                    )}
+                    {(!customerType || isRestaurant) && (
+                      <td className="text-right p-2 font-medium text-blue-700">{formatPrice(day.metrics.totalOrderPrice)}</td>
                     )}
                     <td className="text-right p-2 text-orange-600">{day.metrics.priceTooHigh}</td>
                     {(!customerType || isHotel) && (

@@ -174,15 +174,23 @@ export async function GET(req: NextRequest) {
       
       const dayReservations = dayCalls.filter(call => call.reservation !== null).length
       const dayOrders = dayCalls.filter(call => call.order !== null).length
-      const dayPriceTooHigh = dayCalls.filter(call => 
+      const dayPriceTooHigh = dayCalls.filter(call =>
         call.analytics?.callOutcome === "PRICE_TOO_HIGH"
       ).length
-      const dayNoRoom = dayCalls.filter(call => 
+      const dayNoRoom = dayCalls.filter(call =>
         call.analytics?.callOutcome === "NO_ROOM_AVAILABLE"
       ).length
-      const dayProductUnavailable = dayCalls.filter(call => 
+      const dayProductUnavailable = dayCalls.filter(call =>
         call.analytics?.callOutcome === "PRODUCT_UNAVAILABLE"
       ).length
+
+      // Toplam fiyatlar: o gün yapılan rezervasyonların ve alınan siparişlerin toplamı
+      const totalReservationPrice = dayCalls
+        .filter(call => call.reservation != null)
+        .reduce((sum, call) => sum + (call.reservation?.totalPrice ?? 0), 0)
+      const totalOrderPrice = dayCalls
+        .filter(call => call.order != null)
+        .reduce((sum, call) => sum + (call.order?.totalAmount ?? 0), 0)
 
       // Calculate daily customer satisfaction
       const dayHappyCalls = dayCalls.filter(call => {
@@ -206,6 +214,8 @@ export async function GET(req: NextRequest) {
           totalCalls: dayCalls.length,
           successfulReservations: dayReservations,
           successfulOrders: dayOrders,
+          totalReservationPrice: Math.round(totalReservationPrice * 100) / 100,
+          totalOrderPrice: Math.round(totalOrderPrice * 100) / 100,
           priceTooHigh: dayPriceTooHigh,
           noRoomAvailable: dayNoRoom,
           productUnavailable: dayProductUnavailable,

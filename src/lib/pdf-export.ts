@@ -30,12 +30,19 @@ interface AnalyticsData {
       totalCalls: number
       successfulReservations: number
       successfulOrders: number
+      totalReservationPrice?: number
+      totalOrderPrice?: number
       priceTooHigh: number
       noRoomAvailable: number
       productUnavailable: number
       conversionRate: number
     }
   }>
+}
+
+function formatPricePdf(value: number | undefined): string {
+  if (value == null || value === 0) return "—"
+  return `₺${value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 // Helper function to safely add text with Turkish characters
@@ -236,13 +243,14 @@ function exportHotelPDF(data: AnalyticsData) {
   addText(doc, "Günlük Detay Tablosu", margin, yPos)
   yPos += 10
 
-  // Prepare table data
+  // Prepare table data (Hotel: Rezervasyon + Rez. Toplam ₺)
   const tableData = data.dailyBreakdown.map(day => {
     const date = format(new Date(day.date), "dd MMM yyyy", { locale: tr })
     return [
       date,
       day.metrics.totalCalls.toString(),
       day.metrics.successfulReservations.toString(),
+      formatPricePdf(day.metrics.totalReservationPrice),
       day.metrics.priceTooHigh.toString(),
       day.metrics.noRoomAvailable.toString(),
       `${day.metrics.conversionRate.toFixed(1)}%`
@@ -251,7 +259,7 @@ function exportHotelPDF(data: AnalyticsData) {
 
   autoTable(doc, {
     startY: yPos,
-    head: [["Tarih", "Toplam Arama", "Başarılı Rezervasyon", "Fiyat Yüksek", "Yer Yok", "Dönüşüm %"]],
+    head: [["Tarih", "Toplam Arama", "Başarılı Rezervasyon", "Rez. Toplam (₺)", "Fiyat Yüksek", "Yer Yok", "Dönüşüm %"]],
     body: tableData,
     theme: "striped",
     styles: {
@@ -273,9 +281,10 @@ function exportHotelPDF(data: AnalyticsData) {
       0: { cellWidth: 35 },
       1: { halign: "center" },
       2: { halign: "center", textColor: [34, 197, 94] },
-      3: { halign: "center", textColor: [249, 115, 22] },
-      4: { halign: "center", textColor: [239, 68, 68] },
-      5: { halign: "center", fontStyle: "bold" }
+      3: { halign: "right", textColor: [34, 197, 94] },
+      4: { halign: "center", textColor: [249, 115, 22] },
+      5: { halign: "center", textColor: [239, 68, 68] },
+      6: { halign: "center", fontStyle: "bold" }
     },
     margin: { left: margin, right: margin }
   })
@@ -484,13 +493,14 @@ function exportRestaurantPDF(data: AnalyticsData) {
   addText(doc, "Günlük Detay Tablosu", margin, yPos)
   yPos += 10
 
-  // Prepare table data
+  // Prepare table data (Restaurant: Sipariş + Sip. Toplam ₺)
   const tableData = data.dailyBreakdown.map(day => {
     const date = format(new Date(day.date), "dd MMM yyyy", { locale: tr })
     return [
       date,
       day.metrics.totalCalls.toString(),
       day.metrics.successfulOrders.toString(),
+      formatPricePdf(day.metrics.totalOrderPrice),
       day.metrics.priceTooHigh.toString(),
       day.metrics.productUnavailable.toString(),
       `${day.metrics.conversionRate.toFixed(1)}%`
@@ -499,7 +509,7 @@ function exportRestaurantPDF(data: AnalyticsData) {
 
   autoTable(doc, {
     startY: yPos,
-    head: [["Tarih", "Toplam Arama", "Başarılı Sipariş", "Fiyat Yüksek", "Ürün Yok", "Dönüşüm %"]],
+    head: [["Tarih", "Toplam Arama", "Başarılı Sipariş", "Sip. Toplam (₺)", "Fiyat Yüksek", "Ürün Yok", "Dönüşüm %"]],
     body: tableData,
     theme: "striped",
     styles: {
@@ -521,9 +531,10 @@ function exportRestaurantPDF(data: AnalyticsData) {
       0: { cellWidth: 35 },
       1: { halign: "center" },
       2: { halign: "center", textColor: [34, 197, 94] },
-      3: { halign: "center", textColor: [249, 115, 22] },
-      4: { halign: "center", textColor: [234, 179, 8] },
-      5: { halign: "center", fontStyle: "bold" }
+      3: { halign: "right", textColor: [34, 197, 94] },
+      4: { halign: "center", textColor: [249, 115, 22] },
+      5: { halign: "center", textColor: [234, 179, 8] },
+      6: { halign: "center", fontStyle: "bold" }
     },
     margin: { left: margin, right: margin }
   })
