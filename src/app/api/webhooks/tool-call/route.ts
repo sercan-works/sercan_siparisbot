@@ -559,6 +559,46 @@ export async function POST(req: NextRequest) {
 }
 
 /**
+ * Resolve the correct hotel KnowledgeBase for a bot.
+ * Priority: 1) BotKnowledgeBase (bot-linked KB with HOTEL customer), 2) BotAssignment (bot assigned to HOTEL customer).
+ * No fallback to "any HOTEL in org" - prevents cross-hotel data leakage.
+ */
+async function resolveHotelKnowledgeBaseForBot(botId: string, organizationId: string) {
+  // 1) BotKnowledgeBase: Bot'a atanmış KB'lerden HOTEL customer tipinde olan
+  const botKbLinks = await prisma.botKnowledgeBase.findMany({
+    where: { botId },
+    include: {
+      knowledgeBase: {
+        include: { customer: { select: { id: true, customerType: true } } }
+      }
+    }
+  })
+  const hotelKb = botKbLinks.find(
+    (link) => link.knowledgeBase?.customer?.customerType === "HOTEL"
+  )?.knowledgeBase
+  if (hotelKb?.texts?.length) return hotelKb
+
+  // 2) BotAssignment: Bot HOTEL müşterisine atanmışsa o müşterinin KB'si
+  const assignment = await prisma.botAssignment.findFirst({
+    where: { botId },
+    include: { user: { select: { id: true, customerType: true } } }
+  })
+  if (assignment?.user?.customerType === "HOTEL") {
+    const kb = await prisma.knowledgeBase.findFirst({
+      where: {
+        organizationId,
+        customerId: assignment.user.id,
+        customer: { customerType: "HOTEL" }
+      }
+    })
+    if (kb?.texts?.length) return kb
+  }
+
+  // 3) Fallback YOK - null dön (cross-hotel veri karışımı engellenir)
+  return null
+}
+
+/**
  * Execute built-in tools
  * Add custom tool logic here based on tool_name
  */
@@ -922,45 +962,8 @@ async function executeBuiltInTool(
           throw new Error("Invalid date format. Dates must be in YYYY-MM-DD format")
         }
 
-        // Get organizationId and customerId from call context
         const organizationId = call.bot.organizationId
-        
-        // Find bot-assigned user (customer)
-        let customerId: string | null = null
-        let assignedCustomerType: string | null = null
-        
-        if (call.bot?.id) {
-          const botAssignment = await prisma.botAssignment.findFirst({
-            where: { botId: call.bot.id },
-            include: { 
-              user: {
-                select: {
-                  id: true,
-                  customerType: true
-                }
-              }
-            }
-          })
-          customerId = botAssignment?.user?.id || null
-          assignedCustomerType = botAssignment?.user?.customerType || null
-        }
-
-        // If assigned customer is not HOTEL type, search for HOTEL customer
-        if (!customerId || assignedCustomerType !== "HOTEL") {
-          const hotelCustomer = await prisma.user.findFirst({
-            where: {
-              organizationId,
-              customerType: "HOTEL"
-            }
-          })
-          if (hotelCustomer) {
-            customerId = hotelCustomer.id
-          }
-        }
-
-        if (!customerId) {
-          throw new Error("No customer found for this bot")
-        }
+        const botId = call.bot.id
 
         // Parse dates
         const startDate = new Date(args.checkIn)
@@ -968,42 +971,7 @@ async function executeBuiltInTool(
         const endDate = new Date(args.checkOut)
         endDate.setHours(0, 0, 0, 0)
 
-        // Get pricing data from Knowledge Base
-        // First try to find KB for this specific customer
-        let knowledgeBase = await prisma.knowledgeBase.findFirst({
-          where: {
-            organizationId,
-            customerId
-          },
-          include: {
-            customer: {
-              select: {
-                id: true,
-                customerType: true
-              }
-            }
-          }
-        })
-
-        // If KB not found or customer is not HOTEL, search for any HOTEL KB in org
-        if (!knowledgeBase || knowledgeBase.customer?.customerType !== "HOTEL") {
-          knowledgeBase = await prisma.knowledgeBase.findFirst({
-            where: {
-              organizationId,
-              customer: {
-                customerType: "HOTEL"
-              }
-            },
-            include: {
-              customer: {
-                select: {
-                  id: true,
-                  customerType: true
-                }
-              }
-            }
-          })
-        }
+        const knowledgeBase = await resolveHotelKnowledgeBaseForBot(botId, organizationId)
 
         if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
       return {
@@ -1150,80 +1118,9 @@ async function executeBuiltInTool(
         }
 
         const organizationId = call.bot.organizationId
-        
-        // Find bot-assigned user (customer)
-        let customerId: string | null = null
-        let assignedCustomerType: string | null = null
-        
-        if (call.bot?.id) {
-          const botAssignment = await prisma.botAssignment.findFirst({
-            where: { botId: call.bot.id },
-            include: { 
-              user: {
-                select: {
-                  id: true,
-                  customerType: true
-                }
-              }
-            }
-          })
-          customerId = botAssignment?.user?.id || null
-          assignedCustomerType = botAssignment?.user?.customerType || null
-        }
+        const botId = call.bot.id
 
-        // If assigned customer is not HOTEL type, search for HOTEL customer
-        if (!customerId || assignedCustomerType !== "HOTEL") {
-          const hotelCustomer = await prisma.user.findFirst({
-            where: {
-              organizationId,
-              customerType: "HOTEL"
-            }
-          })
-          if (hotelCustomer) {
-            customerId = hotelCustomer.id
-          }
-        }
-
-        if (!customerId) {
-          throw new Error("No customer found for this bot")
-        }
-
-        // Get room types from Knowledge Base
-        // First try to find KB for this specific customer
-        let knowledgeBase = await prisma.knowledgeBase.findFirst({
-          where: {
-            organizationId,
-            customerId
-          },
-          include: {
-            customer: {
-              select: {
-                id: true,
-                customerType: true
-              }
-            }
-          }
-        })
-
-        // If KB not found or customer is not HOTEL, search for any HOTEL KB in org
-        if (!knowledgeBase || knowledgeBase.customer?.customerType !== "HOTEL") {
-          knowledgeBase = await prisma.knowledgeBase.findFirst({
-            where: {
-              organizationId,
-              customer: {
-                customerType: "HOTEL"
-              }
-            },
-            include: {
-              customer: {
-                select: {
-                  id: true,
-                  customerType: true
-                }
-              }
-            }
-          })
-        }
+        const knowledgeBase = await resolveHotelKnowledgeBaseForBot(botId, organizationId)
 
         if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
           return {
@@ -1336,114 +1233,7 @@ async function executeBuiltInTool(
         const botId = call.bot.id
         const section = args.section || "all"
 
-        console.log(`[get_hotel_info] Bot ID: ${botId}, Organization ID: ${organizationId}`)
-
-        // Find bot-assigned user (customer)
-        let customerId: string | null = null
-        let assignedCustomerType: string | null = null
-        
-        if (botId) {
-          const botAssignment = await prisma.botAssignment.findFirst({
-            where: { botId },
-            include: { 
-              user: {
-                select: {
-                  id: true,
-                  customerType: true
-                }
-              }
-            }
-          })
-          customerId = botAssignment?.user?.id || null
-          assignedCustomerType = botAssignment?.user?.customerType || null
-          console.log(`[get_hotel_info] Bot assignment found: ${botAssignment ? 'yes' : 'no'}, Customer ID: ${customerId}, Customer Type: ${assignedCustomerType}`)
-        }
-
-        // If assigned customer is not HOTEL type, search for HOTEL customer
-        if (!customerId || assignedCustomerType !== "HOTEL") {
-          console.log(`[get_hotel_info] ${customerId ? `Assigned customer is ${assignedCustomerType}, not HOTEL` : 'No customer assigned to bot'}, searching for HOTEL customer in org...`)
-          const hotelCustomer = await prisma.user.findFirst({
-            where: {
-              organizationId,
-              customerType: "HOTEL"
-            }
-          })
-          if (hotelCustomer) {
-            customerId = hotelCustomer.id
-            console.log(`[get_hotel_info] Found HOTEL customer: ${customerId}`)
-          } else {
-            console.log(`[get_hotel_info] No HOTEL customer found in organization`)
-          }
-        }
-
-        if (!customerId) {
-          console.error(`[get_hotel_info] No customer found for bot ${botId} in org ${organizationId}`)
-          throw new Error("No customer found for this bot")
-        }
-
-        // Find hotel knowledge base for this customer
-        // First try to find KB for this specific customer
-        console.log(`[get_hotel_info] Searching for KB: orgId=${organizationId}, customerId=${customerId}`)
-        let knowledgeBase = await prisma.knowledgeBase.findFirst({
-          where: {
-            organizationId,
-            customerId
-          },
-          include: {
-            customer: {
-              select: {
-                id: true,
-                customerType: true
-              }
-            }
-          }
-        })
-
-        // If KB found but customer type is not HOTEL, search for any HOTEL KB in org
-        if (!knowledgeBase || knowledgeBase.customer?.customerType !== "HOTEL") {
-          console.log(`[get_hotel_info] KB not found for customer ${customerId} or customer is not HOTEL, searching for any HOTEL KB in org...`)
-          knowledgeBase = await prisma.knowledgeBase.findFirst({
-            where: {
-              organizationId,
-              customer: {
-                customerType: "HOTEL"
-              }
-            },
-            include: {
-              customer: {
-                select: {
-                  id: true,
-                  customerType: true
-                }
-              }
-            }
-          })
-          if (knowledgeBase) {
-            console.log(`[get_hotel_info] Found HOTEL KB: ${knowledgeBase.id} for customer: ${knowledgeBase.customer?.id}`)
-          }
-        }
-
-        console.log(`[get_hotel_info] KB found: ${knowledgeBase ? 'yes' : 'no'}`)
-        if (knowledgeBase) {
-          console.log(`[get_hotel_info] KB ID: ${knowledgeBase.id}, Name: ${knowledgeBase.name}, Texts count: ${knowledgeBase.texts?.length || 0}`)
-        } else {
-          // Debug: List all KBs in organization
-          const allKBs = await prisma.knowledgeBase.findMany({
-            where: { organizationId },
-            select: {
-              id: true,
-              name: true,
-              customerId: true,
-              customer: {
-                select: {
-                  id: true,
-                  customerType: true
-                }
-              }
-            }
-          })
-          console.log(`[get_hotel_info] All KBs in org (${allKBs.length}):`, JSON.stringify(allKBs, null, 2))
-        }
+        const knowledgeBase = await resolveHotelKnowledgeBaseForBot(botId, organizationId)
 
         if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
           return {
@@ -1637,81 +1427,10 @@ async function executeBuiltInTool(
         }
 
         const organizationId = call.bot.organizationId
+        const botId = call.bot.id
         const date = args.date || null
 
-        // Find bot-assigned user (customer)
-        let customerId: string | null = null
-        let assignedCustomerType: string | null = null
-        
-        if (call.bot?.id) {
-          const botAssignment = await prisma.botAssignment.findFirst({
-            where: { botId: call.bot.id },
-            include: { 
-              user: {
-                select: {
-                  id: true,
-                  customerType: true
-                }
-              }
-            }
-          })
-          customerId = botAssignment?.user?.id || null
-          assignedCustomerType = botAssignment?.user?.customerType || null
-        }
-
-        // If assigned customer is not HOTEL type, search for HOTEL customer
-        if (!customerId || assignedCustomerType !== "HOTEL") {
-          const hotelCustomer = await prisma.user.findFirst({
-            where: {
-              organizationId,
-              customerType: "HOTEL"
-            }
-          })
-          if (hotelCustomer) {
-            customerId = hotelCustomer.id
-          }
-        }
-
-        if (!customerId) {
-          throw new Error("No customer found for this bot")
-        }
-
-        // Find hotel knowledge base for this customer
-        // First try to find KB for this specific customer
-        let knowledgeBase = await prisma.knowledgeBase.findFirst({
-          where: {
-            organizationId,
-            customerId
-          },
-          include: {
-            customer: {
-              select: {
-                id: true,
-                customerType: true
-              }
-            }
-          }
-        })
-
-        // If KB not found or customer is not HOTEL, search for any HOTEL KB in org
-        if (!knowledgeBase || knowledgeBase.customer?.customerType !== "HOTEL") {
-          knowledgeBase = await prisma.knowledgeBase.findFirst({
-            where: {
-              organizationId,
-              customer: {
-                customerType: "HOTEL"
-              }
-            },
-            include: {
-              customer: {
-                select: {
-                  id: true,
-                  customerType: true
-                }
-              }
-            }
-          })
-        }
+        const knowledgeBase = await resolveHotelKnowledgeBaseForBot(botId, organizationId)
 
         if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
           return {
@@ -1782,80 +1501,9 @@ async function executeBuiltInTool(
         }
 
         const organizationId = call.bot.organizationId
+        const botId = call.bot.id
 
-        // Find bot-assigned user (customer)
-        let customerId: string | null = null
-        let assignedCustomerType: string | null = null
-        
-        if (call.bot?.id) {
-          const botAssignment = await prisma.botAssignment.findFirst({
-            where: { botId: call.bot.id },
-            include: { 
-              user: {
-                select: {
-                  id: true,
-                  customerType: true
-                }
-              }
-            }
-          })
-          customerId = botAssignment?.user?.id || null
-          assignedCustomerType = botAssignment?.user?.customerType || null
-        }
-
-        // If assigned customer is not HOTEL type, search for HOTEL customer
-        if (!customerId || assignedCustomerType !== "HOTEL") {
-          const hotelCustomer = await prisma.user.findFirst({
-            where: {
-              organizationId,
-              customerType: "HOTEL"
-            }
-          })
-          if (hotelCustomer) {
-            customerId = hotelCustomer.id
-          }
-        }
-
-        if (!customerId) {
-          throw new Error("No customer found for this bot")
-        }
-
-        // Find hotel knowledge base for this customer
-        // First try to find KB for this specific customer
-        let knowledgeBase = await prisma.knowledgeBase.findFirst({
-          where: {
-            organizationId,
-            customerId
-          },
-          include: {
-            customer: {
-              select: {
-                id: true,
-                customerType: true
-              }
-            }
-          }
-        })
-
-        // If KB not found or customer is not HOTEL, search for any HOTEL KB in org
-        if (!knowledgeBase || knowledgeBase.customer?.customerType !== "HOTEL") {
-          knowledgeBase = await prisma.knowledgeBase.findFirst({
-            where: {
-              organizationId,
-              customer: {
-                customerType: "HOTEL"
-              }
-            },
-            include: {
-              customer: {
-                select: {
-                  id: true,
-                  customerType: true
-                }
-              }
-            }
-          })
-        }
+        const knowledgeBase = await resolveHotelKnowledgeBaseForBot(botId, organizationId)
 
         if (!knowledgeBase || !knowledgeBase.texts || knowledgeBase.texts.length === 0) {
           return {

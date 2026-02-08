@@ -99,22 +99,66 @@ export async function POST(
       )
     }
 
-    // Check if already assigned
-    const existing = await prisma.botKnowledgeBase.findUnique({
-      where: {
-        botId_knowledgeBaseId: {
-          botId: params.botId,
-          knowledgeBaseId: data.knowledgeBaseId
-        }
+    // 1 KB → 1 agent: Remove any existing assignment of this KB to other bots
+    const currentAssignments = await prisma.botKnowledgeBase.findMany({
+      where: { knowledgeBaseId: data.knowledgeBaseId },
+      include: {
+        bot: { select: { id: true, retellLlmId: true, generalPrompt: true } }
       }
     })
 
-    if (existing) {
-      return NextResponse.json(
-        { error: "Knowledge base already assigned to this bot" },
-        { status: 400 }
-      )
+    for (const a of currentAssignments) {
+      const buildPromptWithoutKb = (prompt: string) => {
+        const start = `<!--KB:${data.knowledgeBaseId}-->`
+        const end = `<!--/KB:${data.knowledgeBaseId}-->`
+        const regex = new RegExp(`${start}[\\s\\S]*?${end}`)
+        return prompt.replace(regex, "")
+      }
+      const updatedPrompt = buildPromptWithoutKb(a.bot.generalPrompt || "")
+      const remainingForBot = await prisma.botKnowledgeBase.findMany({
+        where: { botId: a.bot.id, id: { not: a.id } },
+        include: { knowledgeBase: { select: { retellKnowledgeBaseId: true } } }
+      })
+      const knowledgeBaseIds = remainingForBot
+        .filter(
+          (x) =>
+            x.knowledgeBase.retellKnowledgeBaseId &&
+            !x.knowledgeBase.retellKnowledgeBaseId.startsWith("temp_")
+        )
+        .map((x) => ({
+          knowledge_base_id: x.knowledgeBase.retellKnowledgeBaseId!,
+          top_k: x.topK,
+          filter_score: x.filterScore
+        }))
+      if (a.bot.retellLlmId) {
+        try {
+          await callRetellApi(
+            "PATCH",
+            `/update-retell-llm/${a.bot.retellLlmId}`,
+            { general_prompt: updatedPrompt, knowledge_base_ids: knowledgeBaseIds },
+            organizationId
+          )
+        } catch (err: any) {
+          console.warn("[KB Assign] Retell update failed for old bot:", err)
+        }
+      }
+      await prisma.bot.update({
+        where: { id: a.bot.id },
+        data: { generalPrompt: updatedPrompt }
+      })
+      if (kb.customerId) {
+        const customer = await prisma.user.findFirst({
+          where: { id: kb.customerId, customerType: "HOTEL" }
+        })
+        if (customer) {
+          updateBotPromptWithPricingPrompt(a.bot.id, organizationId).catch(() => {})
+        }
+      }
     }
+
+    await prisma.botKnowledgeBase.deleteMany({
+      where: { knowledgeBaseId: data.knowledgeBaseId }
+    })
 
     // Create assignment in database
     const assignment = await prisma.botKnowledgeBase.create({

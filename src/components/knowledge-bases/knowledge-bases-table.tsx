@@ -32,20 +32,28 @@ interface KnowledgeBase {
   _count: {
     bots: number
   }
+  assignedBot?: { id: string; name: string } | null
+}
+
+interface BotOption {
+  id: string
+  name: string
 }
 
 interface KnowledgeBasesTableProps {
   knowledgeBases: KnowledgeBase[]
+  bots?: BotOption[]
   onEdit?: (kb: KnowledgeBase) => void
   onDelete?: (id: string, name: string) => void
-  onAssign?: (kb: KnowledgeBase) => void
+  onAssignChange?: (kb: KnowledgeBase, botId: string | null) => void
 }
 
 export default function KnowledgeBasesTable({
   knowledgeBases,
+  bots = [],
   onEdit,
   onDelete,
-  onAssign
+  onAssignChange
 }: KnowledgeBasesTableProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [autoRefreshFilter, setAutoRefreshFilter] = useState<string>("all")
@@ -83,11 +91,12 @@ export default function KnowledgeBasesTable({
         (autoRefreshFilter === "enabled" && kb.enableAutoRefresh) ||
         (autoRefreshFilter === "disabled" && !kb.enableAutoRefresh)
 
-      // Bot count filter
+      // Bot count filter (1 KB → 1 agent)
+      const hasAssignedBot = !!(kb.assignedBot || (kb._count?.bots ?? 0) > 0)
       const matchesBotCount =
         botCountFilter === "all" ||
-        (botCountFilter === "with-bots" && kb._count.bots > 0) ||
-        (botCountFilter === "no-bots" && kb._count.bots === 0)
+        (botCountFilter === "with-bots" && hasAssignedBot) ||
+        (botCountFilter === "no-bots" && !hasAssignedBot)
 
       // Type filter
       const kbType = getKnowledgeBaseType(kb)
@@ -182,11 +191,11 @@ export default function KnowledgeBasesTable({
               <TableHead className="min-w-[180px]">Firma</TableHead>
               <TableHead className="min-w-[100px]">Tür</TableHead>
               <TableHead className="min-w-[120px] hidden">Chunk Sayısı</TableHead>
-              <TableHead className="min-w-[120px]">Bot Sayısı</TableHead>
+              <TableHead className="min-w-[140px]">Atanan Ajan</TableHead>
               <TableHead className="min-w-[120px]">Auto Refresh</TableHead>
               <TableHead className="min-w-[150px]">Oluşturulma</TableHead>
               <TableHead className="min-w-[150px]">Güncelleme</TableHead>
-              {(onEdit || onDelete || onAssign) && (
+                  {(onEdit || onDelete) && (
                 <TableHead className="min-w-[160px] text-right">İşlemler</TableHead>
               )}
             </TableRow>
@@ -194,13 +203,13 @@ export default function KnowledgeBasesTable({
           <TableBody>
             {knowledgeBases.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={onEdit || onDelete || onAssign ? 8 : 7} className="text-center py-12 text-gray-500">
+                <TableCell colSpan={onEdit || onDelete ? 8 : 7} className="text-center py-12 text-gray-500">
                   Henüz bilgi bankası yok
                 </TableCell>
               </TableRow>
             ) : filteredKnowledgeBases.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={onEdit || onDelete || onAssign ? 8 : 7} className="text-center py-12 text-gray-500">
+                <TableCell colSpan={onEdit || onDelete ? 8 : 7} className="text-center py-12 text-gray-500">
                   Filtrelere uygun bilgi bankası bulunamadı
                 </TableCell>
               </TableRow>
@@ -232,9 +241,30 @@ export default function KnowledgeBasesTable({
                       <Badge variant="secondary">{kb.texts.length}</Badge>
                     </TableCell>
                   <TableCell>
-                    <Badge variant={kb._count.bots > 0 ? "default" : "outline"}>
-                      {kb._count.bots}
-                    </Badge>
+                    {onAssignChange && bots.length > 0 ? (
+                      <Select
+                        value={kb.assignedBot?.id ?? "none"}
+                        onValueChange={(value) =>
+                          onAssignChange(kb, value === "none" ? null : value)
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-full min-w-[140px]">
+                          <SelectValue placeholder="Atanmamış" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Atanmamış</SelectItem>
+                          {bots.map((bot) => (
+                            <SelectItem key={bot.id} value={bot.id}>
+                              {bot.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span className="text-sm text-gray-600">
+                        {kb.assignedBot?.name ?? "Atanmamış"}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -258,20 +288,9 @@ export default function KnowledgeBasesTable({
                       day: "numeric"
                     })}
                   </TableCell>
-                  {(onEdit || onDelete || onAssign) && (
+                  {(onEdit || onDelete) && (
                     <TableCell>
                       <div className="flex items-center justify-end gap-2">
-                        {onAssign && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onAssign(kb)}
-                            className="h-8 px-2 text-xs"
-                            title="Asistana ata"
-                          >
-                            Ata
-                          </Button>
-                        )}
                         {onEdit && (
                           <Button
                             variant="ghost"

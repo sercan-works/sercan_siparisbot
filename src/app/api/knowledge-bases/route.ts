@@ -45,12 +45,25 @@ export async function GET(req: NextRequest) {
         },
         _count: {
           select: { bots: true }
+        },
+        bots: {
+          take: 1,
+          include: {
+            bot: { select: { id: true, name: true } }
+          }
         }
       },
       orderBy: { createdAt: "desc" }
     })
 
-    return NextResponse.json({ knowledgeBases })
+    // Map to include assignedBot (1 KB → 1 agent)
+    const knowledgeBasesWithAssignedBot = knowledgeBases.map((kb) => {
+      const { bots, ...rest } = kb
+      const assignedBot = bots[0]?.bot ?? null
+      return { ...rest, assignedBot }
+    })
+
+    return NextResponse.json({ knowledgeBases: knowledgeBasesWithAssignedBot })
   } catch (error) {
     console.error("Error fetching knowledge bases:", error)
     return NextResponse.json(

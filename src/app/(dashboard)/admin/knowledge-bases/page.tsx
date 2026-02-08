@@ -3,15 +3,13 @@
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { redirect } from "next/navigation"
-import { Plus, Database, Loader2 } from "lucide-react"
+import { Plus, Loader2 } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import HotelKnowledgeForm from "@/components/knowledge-bases/hotel-knowledge-form"
 import RestaurantKnowledgeForm from "@/components/knowledge-bases/restaurant-knowledge-form"
 import KnowledgeBasesTable from "@/components/knowledge-bases/knowledge-bases-table"
 import DeleteKBDialog from "@/components/knowledge-bases/delete-kb-dialog"
 import SyncKbButton from "@/components/knowledge-bases/sync-kb-button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 
 export const dynamic = "force-dynamic"
 
@@ -33,6 +31,7 @@ interface KnowledgeBase {
   _count: {
     bots: number
   }
+  assignedBot?: { id: string; name: string } | null
 }
 
 interface Customer {
@@ -60,10 +59,6 @@ export default function KnowledgeBasesPage() {
   const [editingKB, setEditingKB] = useState<KnowledgeBase | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; kb: { id: string; name: string } | null }>({
-    isOpen: false,
-    kb: null
-  })
-  const [assignDialog, setAssignDialog] = useState<{ isOpen: boolean; kb: KnowledgeBase | null }>({
     isOpen: false,
     kb: null
   })
@@ -151,6 +146,23 @@ export default function KnowledgeBasesPage() {
     }
   }
 
+  const handleAssignChange = async (kb: KnowledgeBase, botId: string | null) => {
+    try {
+      const response = await fetch(`/api/knowledge-bases/${kb.id}/assign`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botId })
+      })
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Atama güncellenemedi")
+      }
+      loadKnowledgeBases()
+    } catch (err: any) {
+      alert(err.message)
+    }
+  }
+
   if (status === "loading" || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -203,6 +215,8 @@ export default function KnowledgeBasesPage() {
 
       <KnowledgeBasesTable
         knowledgeBases={knowledgeBases}
+        bots={bots}
+        onAssignChange={handleAssignChange}
         onEdit={(kb) => {
           setEditingKB(kb)
           const targetCustomer = kb.customer || customers.find(c => c.id === kb.customerId) || null
@@ -241,7 +255,6 @@ export default function KnowledgeBasesPage() {
           setShowCustomerSelection(true)
         }}
         onDelete={handleDeleteClick}
-        onAssign={(kb) => setAssignDialog({ isOpen: true, kb })}
       />
 
       <CustomerSelectionDialog
@@ -307,17 +320,6 @@ export default function KnowledgeBasesPage() {
           }}
         />
       )}
-
-      <AssignDialog
-        isOpen={assignDialog.isOpen}
-        kb={assignDialog.kb}
-        bots={bots}
-        onClose={() => setAssignDialog({ isOpen: false, kb: null })}
-        onSuccess={() => {
-          setAssignDialog({ isOpen: false, kb: null })
-          loadKnowledgeBases()
-        }}
-      />
 
       <DeleteKBDialog
         isOpen={deleteDialog.isOpen}
@@ -420,125 +422,6 @@ interface KnowledgeBaseDialogProps {
   knowledgeBase: KnowledgeBase | null
   onClose: () => void
   onSuccess: () => void
-}
-
-interface AssignDialogProps {
-  isOpen: boolean
-  kb: KnowledgeBase | null
-  bots: BotOption[]
-  onClose: () => void
-  onSuccess: () => void
-}
-
-function AssignDialog({ isOpen, kb, bots, onClose, onSuccess }: AssignDialogProps) {
-  const [selectedBotId, setSelectedBotId] = useState<string>("")
-  const [topK, setTopK] = useState<number>(3)
-  const [filterScore, setFilterScore] = useState<number>(0.5)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (bots.length > 0 && (!selectedBotId || !bots.find(b => b.id === selectedBotId))) {
-      setSelectedBotId(bots[0].id)
-    }
-  }, [bots, selectedBotId])
-
-  if (!isOpen || !kb) return null
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-    setError(null)
-    try {
-      const resp = await fetch(`/api/bots/${selectedBotId}/knowledge-bases`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          knowledgeBaseId: kb.id,
-          topK,
-          filterScore,
-        })
-      })
-      const data = await resp.json()
-      if (!resp.ok) {
-        throw new Error(data.error || data.details || "Atama başarısız")
-      }
-      onSuccess()
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Asistana Ata</DialogTitle>
-          <p className="text-sm text-gray-600 mt-1">{kb.name}</p>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-3 py-2 rounded text-sm">
-              {error}
-            </div>
-          )}
-          <div>
-            <Label>Asistan</Label>
-            <select
-              className="w-full border rounded px-3 py-2"
-              value={selectedBotId}
-              onChange={(e) => setSelectedBotId(e.target.value)}
-              required
-            >
-              {bots.map((bot) => (
-                <option key={bot.id} value={bot.id}>{bot.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label>Top K</Label>
-            <Input
-              type="number"
-              min={1}
-              max={20}
-              value={topK}
-              onChange={(e) => setTopK(parseInt(e.target.value, 10))}
-            />
-          </div>
-          <div>
-            <Label>Filter Score</Label>
-            <Input
-              type="number"
-              min={0}
-              max={1}
-              step={0.1}
-              value={filterScore}
-              onChange={(e) => setFilterScore(parseFloat(e.target.value))}
-            />
-          </div>
-          <div className="flex gap-3 justify-end pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 border border-gray-300 rounded hover:bg-gray-50"
-              disabled={isSubmitting}
-            >
-              İptal
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
-            >
-              {isSubmitting ? "Atanıyor..." : "Ata"}
-            </button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
 }
 
 function KnowledgeBaseDialog({ knowledgeBase, onClose, onSuccess }: KnowledgeBaseDialogProps) {
