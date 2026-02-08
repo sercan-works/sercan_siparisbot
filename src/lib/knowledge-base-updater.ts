@@ -2,15 +2,16 @@ import { prisma } from "./prisma"
 
 /**
  * Update daily rates availability in knowledge bases for a given reservation date range
- * This function finds all HOTEL knowledge bases for the customer and updates the availableRooms
- * in the pricing.dailyRates array for each day in the reservation period
+ * Supports both dailyRatesByRoomType (per room type) and legacy dailyRates format.
+ * When roomTypeOrId is provided, updates the corresponding room type's rates in dailyRatesByRoomType.
  */
 export async function updateKnowledgeBaseDailyRatesAvailability(
   organizationId: string,
   customerId: string,
   checkIn: Date,
   checkOut: Date,
-  delta: number // 1 to decrease, -1 to increase
+  delta: number, // 1 to decrease, -1 to increase
+  roomTypeOrId?: string // Room type name or ID from KB - when provided, updates that room type's rates
 ): Promise<void> {
   try {
     // Find all HOTEL knowledge bases for this customer
@@ -68,14 +69,64 @@ export async function updateKnowledgeBaseDailyRatesAvailability(
         if (!hotelData.pricing) {
           hotelData.pricing = {}
         }
-        if (!hotelData.pricing.dailyRates || !Array.isArray(hotelData.pricing.dailyRates)) {
-          hotelData.pricing.dailyRates = []
+
+        const roomTypes = hotelData.roomTypes || []
+        const dailyRatesByRoomType = hotelData.pricing.dailyRatesByRoomType || {}
+        const hasNewFormat = Object.keys(dailyRatesByRoomType).length > 0
+
+        // Resolve which rates to update: room type specific or legacy
+        let targetRoomTypeId: string | null = null
+        if (roomTypeOrId && hasNewFormat) {
+          if (roomTypes.length > 0) {
+            const byId = roomTypes.find((rt: any) => rt.id === roomTypeOrId)
+            const byName = roomTypes.find(
+              (rt: any) => rt.name && rt.name.toLowerCase() === roomTypeOrId.toLowerCase()
+            )
+            const match = byId || byName
+            if (match && dailyRatesByRoomType[match.id]) {
+              targetRoomTypeId = match.id
+            }
+          }
+          if (!targetRoomTypeId && dailyRatesByRoomType["_legacy"]) {
+            targetRoomTypeId = "_legacy"
+          }
         }
 
-        const dailyRates = hotelData.pricing.dailyRates
         let updatedCount = 0
 
-        // Update each date in the range
+        if (targetRoomTypeId && hasNewFormat) {
+          // New format: update dailyRatesByRoomType[targetRoomTypeId]
+          const dailyRates = dailyRatesByRoomType[targetRoomTypeId] || []
+          for (const date of datesToUpdate) {
+            const dateKey = date.toISOString().split('T')[0]
+            let dailyRate = dailyRates.find((rate: any) => rate.date === dateKey)
+            if (dailyRate) {
+              const currentAvailableRooms = parseInt(dailyRate.availableRooms || "0")
+              const newAvailableRooms = Math.max(0, currentAvailableRooms - delta)
+              dailyRate.availableRooms = String(newAvailableRooms)
+              updatedCount++
+            } else {
+              const initialAvailableRooms = Math.max(0, -delta)
+              dailyRates.push({
+                date: dateKey,
+                availableRooms: String(initialAvailableRooms),
+                ppPrice: "",
+                single: "",
+                dbl: "",
+                triple: ""
+              })
+              updatedCount++
+            }
+          }
+          hotelData.pricing.dailyRatesByRoomType = { ...dailyRatesByRoomType, [targetRoomTypeId]: dailyRates }
+        } else {
+          // Legacy format or fallback: use dailyRates
+          if (!hotelData.pricing.dailyRates || !Array.isArray(hotelData.pricing.dailyRates)) {
+            hotelData.pricing.dailyRates = []
+          }
+          const dailyRates = hotelData.pricing.dailyRates
+
+        // Update each date in the range (legacy path)
         for (const date of datesToUpdate) {
           const dateKey = date.toISOString().split('T')[0] // YYYY-MM-DD format
 
@@ -112,6 +163,7 @@ export async function updateKnowledgeBaseDailyRatesAvailability(
             
             console.log(`[KB DailyRates Update] Created new date entry ${dateKey} with availableRooms: ${initialAvailableRooms}`)
           }
+        }
         }
 
         if (updatedCount > 0) {

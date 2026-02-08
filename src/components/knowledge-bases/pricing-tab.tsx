@@ -5,16 +5,19 @@ import DailyRatesTab from "./daily-rates-tab"
 import PricingRulesTab from "./pricing-rules-tab"
 import DiscountsTable from "./discounts-table"
 import PricingPromptTab from "./pricing-prompt-tab"
+import type { RoomType } from "./room-types-table"
+
+export interface DailyRate {
+  date: string
+  availableRooms: string
+  ppPrice: string
+  single: string
+  dbl: string
+  triple: string
+}
 
 interface PricingData {
-  dailyRates: Array<{
-    date: string
-    availableRooms: string
-    ppPrice: string
-    single: string
-    dbl: string
-    triple: string
-  }>
+  dailyRatesByRoomType?: Record<string, DailyRate[]>
   rules: {
     singleCarpani: string
     tripleCarpani: string
@@ -41,13 +44,17 @@ interface PricingData {
 
 interface PricingTabProps {
   pricing: PricingData
+  roomTypes: RoomType[]
   onChange: (pricing: PricingData) => void
 }
 
 export default function PricingTab({
   pricing,
+  roomTypes = [],
   onChange
 }: PricingTabProps) {
+  const dailyRatesByRoomType = pricing.dailyRatesByRoomType || {}
+
   return (
     <Tabs defaultValue="daily-rates" className="w-full">
       <TabsList className="grid w-full grid-cols-4 mb-6">
@@ -59,9 +66,10 @@ export default function PricingTab({
 
       <TabsContent value="daily-rates" className="mt-0">
         <DailyRatesTab
-          dailyRates={pricing.dailyRates}
-          onChange={(dailyRates) =>
-            onChange({ ...pricing, dailyRates })
+          roomTypes={roomTypes}
+          dailyRatesByRoomType={dailyRatesByRoomType}
+          onChange={(dailyRatesByRoomType) =>
+            onChange({ ...pricing, dailyRatesByRoomType })
           }
         />
       </TabsContent>

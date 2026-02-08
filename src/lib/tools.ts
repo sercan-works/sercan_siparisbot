@@ -171,6 +171,10 @@ export const GET_PRICING_INFO_TOOL = {
                 date: {
                     type: "string",
                     description: "Optional specific date in YYYY-MM-DD format to get pricing for that date. If not provided, returns general pricing information."
+                },
+                roomType: {
+                    type: "string",
+                    description: "Optional room type name (e.g. 'Deluxe', 'Standard') to get pricing for that specific room type."
                 }
             },
             required: []

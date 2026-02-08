@@ -31,13 +31,14 @@ interface Discount {
 }
 
 interface PricingData {
-  dailyRates: DailyRate[]
+  dailyRates?: DailyRate[]
+  dailyRatesByRoomType?: Record<string, DailyRate[]>
   rules: PricingRules
   discounts: Discount[]
 }
 
 export function generatePricingPrompt(pricing: PricingData): string {
-  const { dailyRates, rules, discounts } = pricing
+  const { rules, discounts } = pricing
 
   let prompt = `## FİYAT HESAPLAMA KURALLARI
 
@@ -48,6 +49,10 @@ Bu bölüm, müşteri sorularına doğru fiyat hesaplaması yapmanız için gere
 Fiyat hesaplaması için aşağıdaki veri yapılarını kullanacaksınız:
 
 #### Günlük Fiyat Verileri (dailyRates)
+get_pricing_info tool'u size **dailyRates** dizisini döndürür. Fiyatlar oda tipine göre ayrılmış olabilir:
+- Müşteri belirli bir oda tipi (örn. "Deluxe", "Suite") sorduğunda, get_pricing_info'yu **roomType** parametresiyle çağırın
+- Dönen dailyRates o oda tipine ait fiyatları içerir
+
 Her tarih için aşağıdaki alanlar mevcuttur:
 - **date**: Tarih (YYYY-MM-DD formatında)
 - **availableRooms**: Satışa açık oda sayısı
@@ -55,8 +60,9 @@ Her tarih için aşağıdaki alanlar mevcuttur:
 - **single**: Single oda fiyatı
 - **dbl**: Dbl (Double) oda fiyatı
 - **triple**: Triple oda fiyatı
+- **roomTypeName** (opsiyonel): Birden fazla oda tipi varsa, bu alan hangi oda tipine ait olduğunu gösterir
 
-**ÖNEMLİ**: Günlük fiyat verilerini bu yapıdan dinamik olarak okuyun. Her tarih için ilgili değerleri kullanın.
+**ÖNEMLİ**: Günlük fiyat verilerini dinamik olarak okuyun. Oda tipi bazlı fiyatlandırma varsa, müşterinin sorduğu oda tipine ait dailyRates'i kullanın (get_pricing_info roomType parametresiyle çağrılabilir).
 
 #### Fiyat Kuralları (rules)
 - **singleCarpani**: Single oda çarpanı (varsa kullanın, yoksa gözardı edin)
@@ -83,13 +89,15 @@ Her indirim için aşağıdaki alanlar mevcuttur:
 
 Müşteri bir fiyat sorusu sorduğunda, aşağıdaki adımları sırasıyla takip ediniz:
 
-#### Adım 1: Tarih Kontrolü ve Günlük Fiyat Bulma
-1. Müşterinin istediği konaklama tarihini belirleyin
-2. **dailyRates** verisinde bu tarihi arayın (date alanını kontrol edin)
-3. Eğer tam tarih bulunamazsa, en yakın tarihi kullanın
-4. Tarih bulunamazsa müşteriye bilgi verin
-5. Bulunan tarih için **ppPrice**, **single**, **dbl**, **triple** değerlerini alın
-6. **availableRooms** değerini kontrol edin (müsaitlik için)
+#### Adım 1: Oda Tipi ve Tarih Kontrolü
+1. Müşterinin istediği **oda tipini** belirleyin (isimle söylüyorsa: "Deluxe", "Suite" vb.; söylemiyorsa kişi sayısına göre single/dbl/triple)
+2. **get_pricing_info** tool'unu mümkünse **roomType** parametresiyle çağırın (müşteri belirli oda tipi söylediyse)
+3. Müşterinin istediği konaklama tarihini belirleyin
+4. **dailyRates** verisinde bu tarihi arayın (date alanını kontrol edin)
+5. Eğer tam tarih bulunamazsa, en yakın tarihi kullanın
+6. Tarih bulunamazsa müşteriye bilgi verin
+7. Bulunan tarih için **ppPrice**, **single**, **dbl**, **triple** değerlerini alın
+8. **availableRooms** değerini kontrol edin (müsaitlik için)
 
 #### Adım 2: Oda Tipi Belirleme
 Kişi sayısına göre oda tipini belirleyin:
@@ -178,14 +186,15 @@ Her indirim için:
 
 ### 4. HESAPLAMA ÖRNEĞI (GENEL YAKLAŞIM)
 
-1. Müşteri bilgilerini toplayın: Tarih, kişi sayısı, yaşlar, oda tipi tercihi
-2. **dailyRates** içinden ilgili tarihi bulun
-3. Oda tipini belirleyin (kişi sayısına göre)
-4. Temel fiyatı alın (direkt fiyat veya PP × kişi sayısı)
-5. Çarpanları uygulayın (varsa)
-6. Çocuk/bebek indirimlerini hesaplayın (varsa)
-7. Kampanya indirimlerini kontrol edin ve uygulayın (varsa)
-8. Toplam fiyatı hesaplayın ve sunun
+1. Müşteri bilgilerini toplayın: Tarih, kişi sayısı, yaşlar, oda tipi tercihi (varsa)
+2. Oda tipi belirtilmişse **get_pricing_info(roomType: "Oda Tipi Adı")** ile ilgili oda tipinin fiyatlarını alın
+3. **dailyRates** içinden ilgili tarihi bulun
+4. Kişi sayısına göre oda tipini (single/dbl/triple) belirleyin
+5. Temel fiyatı alın (direkt fiyat veya PP × kişi sayısı)
+6. Çarpanları uygulayın (varsa)
+7. Çocuk/bebek indirimlerini hesaplayın (varsa)
+8. Kampanya indirimlerini kontrol edin ve uygulayın (varsa)
+9. Toplam fiyatı hesaplayın ve sunun
 
 **ÖNEMLİ**: Her adımda değer yoksa veya boşsa, o adımı atlayın ve bir sonrakine geçin.
 

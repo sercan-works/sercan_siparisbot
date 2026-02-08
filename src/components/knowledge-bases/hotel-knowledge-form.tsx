@@ -46,7 +46,15 @@ interface HotelData {
   facilityInfo: FacilityInfo
   roomTypes: RoomType[]
   pricing: {
-    dailyRates: any[]
+    dailyRatesByRoomType?: Record<string, Array<{
+      date: string
+      availableRooms: string
+      ppPrice: string
+      single: string
+      dbl: string
+      triple: string
+    }>>
+    dailyRates?: any[] // Legacy - migrated to dailyRatesByRoomType
     rules: any
     discounts: any[]
     pricingPrompt: string
@@ -110,7 +118,7 @@ export default function HotelKnowledgeForm({
     },
     roomTypes: [],
     pricing: {
-      dailyRates: [],
+      dailyRatesByRoomType: {},
       rules: {
         singleCarpani: "",
         tripleCarpani: "",
@@ -206,6 +214,23 @@ export default function HotelKnowledgeForm({
             parsed.policies = []
           }
           
+          // dailyRates -> dailyRatesByRoomType migration
+          if (parsed.pricing) {
+            if (parsed.pricing.dailyRates && Array.isArray(parsed.pricing.dailyRates) && !parsed.pricing.dailyRatesByRoomType) {
+              const roomTypes = parsed.roomTypes || []
+              parsed.pricing.dailyRatesByRoomType = {}
+              if (roomTypes.length > 0) {
+                parsed.pricing.dailyRatesByRoomType[roomTypes[0].id] = parsed.pricing.dailyRates
+              } else {
+                parsed.pricing.dailyRatesByRoomType["_legacy"] = parsed.pricing.dailyRates
+              }
+              delete parsed.pricing.dailyRates
+            }
+            if (!parsed.pricing.dailyRatesByRoomType) {
+              parsed.pricing.dailyRatesByRoomType = {}
+            }
+          }
+
           // Discounts için eski formatı yeni formata çevir (migration)
           if (parsed.pricing && parsed.pricing.discounts && Array.isArray(parsed.pricing.discounts)) {
             parsed.pricing.discounts = parsed.pricing.discounts.map((discount: any) => {
@@ -237,7 +262,7 @@ export default function HotelKnowledgeForm({
           if (!parsed.pricing || !parsed.pricing.pricingPrompt || parsed.pricing.pricingPrompt.trim() === "") {
             if (!parsed.pricing) {
               parsed.pricing = {
-                dailyRates: [],
+                dailyRatesByRoomType: {},
                 rules: {
                   singleCarpani: "",
                   tripleCarpani: "",
@@ -415,6 +440,7 @@ export default function HotelKnowledgeForm({
               <TabsContent value="pricing" className="mt-0">
                 <PricingTab
                   pricing={hotelData.pricing}
+                  roomTypes={hotelData.roomTypes}
                   onChange={(pricing) =>
                     setHotelData({ ...hotelData, pricing })
                   }

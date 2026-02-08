@@ -133,7 +133,8 @@ export async function PATCH(
         reservation.customerId,
         reservation.checkIn,
         reservation.checkOut,
-        delta
+        delta,
+        reservation.roomType || undefined
       ).catch((err) => {
         console.error("[reservation status] Failed to update knowledge base daily rates:", err)
         // Don't fail status update if KB update fails

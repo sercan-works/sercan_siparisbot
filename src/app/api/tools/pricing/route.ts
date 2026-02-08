@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { resolveDailyRates } from "@/lib/pricing-helpers"
 
 export const dynamic = "force-dynamic"
 
@@ -10,6 +11,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const botId = searchParams.get("botId")
     const date = searchParams.get("date")
+    const roomType = searchParams.get("roomType")
     const internalCall = req.headers.get("x-internal-call") === "true"
 
     // For internal calls (from tool-call route), skip session check and use botId
@@ -76,18 +78,19 @@ export async function GET(req: NextRequest) {
       }
 
       const pricingData = hotelData.pricing || {}
-
-      // If specific date requested, filter daily rates
-      let dailyRates = pricingData.dailyRates || []
-      if (date) {
-        dailyRates = dailyRates.filter((rate: any) => rate.date === date)
-      }
+      const roomTypes = hotelData.roomTypes || []
+      const dailyRates = resolveDailyRates(pricingData, {
+        roomType: roomType || undefined,
+        roomTypes,
+        date: date || undefined
+      })
 
       return NextResponse.json({
         success: true,
         date: date || null,
+        roomType: roomType || null,
         data: {
-          dailyRates: dailyRates,
+          dailyRates,
           rules: pricingData.rules || {},
           discounts: pricingData.discounts || []
         }
@@ -161,18 +164,19 @@ export async function GET(req: NextRequest) {
     }
 
     const pricingData = hotelData.pricing || {}
-
-    // If specific date requested, filter daily rates
-    let dailyRates = pricingData.dailyRates || []
-    if (date) {
-      dailyRates = dailyRates.filter((rate: any) => rate.date === date)
-    }
+    const roomTypes = hotelData.roomTypes || []
+    const dailyRates = resolveDailyRates(pricingData, {
+      roomType: searchParams.get("roomType") || undefined,
+      roomTypes,
+      date: searchParams.get("date") || undefined
+    })
 
     return NextResponse.json({
       success: true,
-      date: date || null,
+      date: searchParams.get("date") || null,
+      roomType: searchParams.get("roomType") || null,
       data: {
-        dailyRates: dailyRates,
+        dailyRates,
         rules: pricingData.rules || {},
         discounts: pricingData.discounts || []
       }

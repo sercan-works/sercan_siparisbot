@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { callRetellApi } from "@/lib/retell"
 import { updateKnowledgeBaseDailyRatesAvailability } from "@/lib/knowledge-base-updater"
 import { analyzeToolCallResult } from "@/lib/call-metrics-analyzer"
+import { resolveDailyRates } from "@/lib/pricing-helpers"
 import crypto from "crypto"
 
 export const dynamic = "force-dynamic"
@@ -1024,8 +1025,11 @@ async function executeBuiltInTool(
         }
 
         const pricingData = hotelData.pricing || {}
-        let dailyRates = pricingData.dailyRates || []
         const roomTypes = hotelData.roomTypes || []
+        const dailyRates = resolveDailyRates(pricingData, {
+          roomType: args.roomType,
+          roomTypes
+        })
 
         // Filter daily rates for the date range
         const filteredDailyRates = dailyRates.filter((rate: any) => {
@@ -1735,12 +1739,12 @@ async function executeBuiltInTool(
         }
 
         const pricingData = hotelData.pricing || {}
-
-        // If specific date requested, filter daily rates
-        let dailyRates = pricingData.dailyRates || []
-        if (date) {
-          dailyRates = dailyRates.filter((rate: any) => rate.date === date)
-        }
+        const roomTypes = hotelData.roomTypes || []
+        const dailyRates = resolveDailyRates(pricingData, {
+          roomType: args.roomType,
+          roomTypes,
+          date: date || undefined
+        })
 
         console.log("[get_pricing_info] Pricing info fetched for date:", date || "all")
 
@@ -2200,7 +2204,8 @@ async function executeBuiltInTool(
           assignedUser.id,
           checkInDate,
           checkOutDate,
-          1 // delta=1 means decrease availableRooms by 1
+          1, // delta=1 means decrease availableRooms by 1
+          args.roomType
         ).catch((err) => {
           console.error("[create_reservation] Failed to update knowledge base daily rates:", err)
           // Don't fail reservation creation if KB update fails

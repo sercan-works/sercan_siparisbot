@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Copy, Trash2, CheckSquare, Square } from "lucide-react"
+import type { RoomType } from "./room-types-table"
 
 interface DailyRate {
   date: string
@@ -17,14 +18,46 @@ interface DailyRate {
 }
 
 interface DailyRatesTabProps {
-  dailyRates: DailyRate[]
-  onChange: (dailyRates: DailyRate[]) => void
+  roomTypes: RoomType[]
+  dailyRatesByRoomType: Record<string, DailyRate[]>
+  onChange: (dailyRatesByRoomType: Record<string, DailyRate[]>) => void
 }
 
 export default function DailyRatesTab({
-  dailyRates,
+  roomTypes,
+  dailyRatesByRoomType,
   onChange
 }: DailyRatesTabProps) {
+  const defaultRoomTypeId = roomTypes.length > 0
+    ? roomTypes[0].id
+    : dailyRatesByRoomType["_legacy"]
+      ? "_legacy"
+      : ""
+  const [selectedRoomTypeId, setSelectedRoomTypeId] = useState<string>(defaultRoomTypeId)
+
+  // roomTypes değiştiğinde selectedRoomTypeId'yi güncelle
+  useEffect(() => {
+    if (roomTypes.length > 0) {
+      const found = roomTypes.find(rt => rt.id === selectedRoomTypeId)
+      if (!found) {
+        setSelectedRoomTypeId(roomTypes[0].id)
+      }
+    } else if (Object.keys(dailyRatesByRoomType).includes("_legacy")) {
+      setSelectedRoomTypeId("_legacy")
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomTypes.length, roomTypes[0]?.id])
+
+  const effectiveRoomTypeId = selectedRoomTypeId || defaultRoomTypeId
+  const dailyRates = (effectiveRoomTypeId ? dailyRatesByRoomType[effectiveRoomTypeId] : []) || []
+
+  const handleDailyRatesChange = (newRates: DailyRate[]) => {
+    if (!effectiveRoomTypeId) return
+    onChange({
+      ...dailyRatesByRoomType,
+      [effectiveRoomTypeId]: newRates
+    })
+  }
   // Türkçe ay isimleri
   const turkishMonths = [
     "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
@@ -113,7 +146,7 @@ export default function DailyRatesTab({
       day.availableRooms || day.ppPrice || day.single || day.dbl || day.triple || day.date
     )
 
-    onChange([...otherMonthRates, ...updatedMonthRates])
+    handleDailyRatesChange([...otherMonthRates, ...updatedMonthRates])
   }
 
   // Kaynak satırı seç
@@ -151,7 +184,7 @@ export default function DailyRatesTab({
       day.availableRooms || day.ppPrice || day.single || day.dbl || day.triple || day.date
     )
 
-    onChange([...otherMonthRates, ...updatedMonthRates])
+    handleDailyRatesChange([...otherMonthRates, ...updatedMonthRates])
   }
 
   // Seçili satırlara uygula
@@ -186,7 +219,7 @@ export default function DailyRatesTab({
       day.availableRooms || day.ppPrice || day.single || day.dbl || day.triple || day.date
     )
 
-    onChange([...otherMonthRates, ...updatedMonthRates])
+    handleDailyRatesChange([...otherMonthRates, ...updatedMonthRates])
     setSelectedRows(new Set()) // Seçimi temizle
   }
 
@@ -226,7 +259,7 @@ export default function DailyRatesTab({
       day.availableRooms || day.ppPrice || day.single || day.dbl || day.triple || day.date
     )
 
-    onChange([...otherMonthRates, ...updatedMonthRates])
+    handleDailyRatesChange([...otherMonthRates, ...updatedMonthRates])
   }
 
   // Tarih formatını görüntüleme için düzenle
@@ -251,13 +284,37 @@ export default function DailyRatesTab({
         <div>
           <h3 className="text-lg font-semibold">Günlük Oda Fiyatları ve Müsaitlik</h3>
           <p className="text-sm text-gray-500 mt-1">
-            Ay seçin ve o ayın tüm günleri için fiyat bilgilerini girin
+            Oda tipi seçin, ardından ay seçerek o ayın tüm günleri için fiyat bilgilerini girin
           </p>
         </div>
       </div>
 
-      {/* Ay Seçici */}
-      <div className="flex items-center gap-4">
+      {roomTypes.length === 0 && !dailyRatesByRoomType["_legacy"] ? (
+        <div className="text-center py-12 border-2 border-dashed rounded-lg bg-gray-50">
+          <p className="text-gray-500 mb-2">Önce Oda Tipleri sekmesinden oda tipi ekleyin</p>
+          <p className="text-sm text-gray-400">Oda tipleri tanımlandıktan sonra her oda tipi için ayrı fiyat tabloları oluşturabilirsiniz.</p>
+        </div>
+      ) : (
+        <>
+      {/* Oda Tipi ve Ay Seçici */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Label>Oda Tipi:</Label>
+          <select
+            value={effectiveRoomTypeId}
+            onChange={(e) => setSelectedRoomTypeId(e.target.value)}
+            className="border rounded-md px-3 py-2 min-w-[180px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {roomTypes.map((rt) => (
+              <option key={rt.id} value={rt.id}>
+                {rt.name || "İsimsiz Oda"}
+              </option>
+            ))}
+            {dailyRatesByRoomType["_legacy"] && (
+              <option value="_legacy">Eski Veri (Oda tipi atanmamış)</option>
+            )}
+          </select>
+        </div>
         <div className="flex items-center gap-2">
           <Label>Ay Seçin:</Label>
           <div className="flex items-center gap-2">
@@ -459,6 +516,8 @@ export default function DailyRatesTab({
         <div className="text-center py-12 border-2 border-dashed rounded-lg">
           <p className="text-gray-500">Lütfen bir ay seçin</p>
         </div>
+      )}
+        </>
       )}
     </div>
   )
