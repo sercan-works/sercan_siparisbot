@@ -29,18 +29,17 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    // CUSTOMER: only list calls for bots assigned to this user (their own assistant(s))
+    // ADMIN: list all calls in their organization
     const baseWhere = {
       organizationId,
       ...(botId && { botId }),
     }
-    const where =
+    const where: Record<string, unknown> =
       role === "CUSTOMER"
         ? {
             ...baseWhere,
-            OR: [
-              { initiatedById: userId },
-              { bot: { assignments: { some: { userId } } } }
-            ]
+            bot: { assignments: { some: { userId } } },
           }
         : baseWhere
 
