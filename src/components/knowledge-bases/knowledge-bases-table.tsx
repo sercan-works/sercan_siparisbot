@@ -173,7 +173,7 @@ export default function KnowledgeBasesTable({
               <TableHead className="min-w-[180px]">Firma</TableHead>
               <TableHead className="min-w-[100px]">Tür</TableHead>
               <TableHead className="min-w-[120px] hidden">Chunk Sayısı</TableHead>
-              <TableHead className="min-w-[140px]">Atanan Ajan</TableHead>
+              <TableHead className="min-w-[140px]">Asistan</TableHead>
               <TableHead className="min-w-[150px]">Oluşturulma</TableHead>
               <TableHead className="min-w-[150px]">Güncelleme</TableHead>
                   {(onEdit || onDelete) && (
