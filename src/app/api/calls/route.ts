@@ -20,18 +20,32 @@ export async function GET(req: NextRequest) {
   const limit = parseInt(searchParams.get("limit") || "50")
   const offset = parseInt(searchParams.get("offset") || "0")
 
+  // Always scope by organization so one account never sees another's calls
+  if (!organizationId || typeof organizationId !== "string") {
+    return NextResponse.json(
+      { error: "Forbidden", message: "Hesap bilgisi eksik. Lütfen tekrar giriş yapın." },
+      { status: 403 }
+    )
+  }
+
   try {
+    const baseWhere = {
+      organizationId,
+      ...(botId && { botId }),
+    }
+    const where =
+      role === "CUSTOMER"
+        ? {
+            ...baseWhere,
+            OR: [
+              { initiatedById: userId },
+              { bot: { assignments: { some: { userId } } } }
+            ]
+          }
+        : baseWhere
+
     const calls = await prisma.call.findMany({
-      where: {
-        organizationId,
-        ...(botId && { botId }),
-        ...(role === "CUSTOMER" && {
-          OR: [
-            { initiatedById: userId },
-            { bot: { assignments: { some: { userId } } } }
-          ]
-        })
-      },
+      where,
       include: {
         bot: { select: { id: true, name: true } },
         initiatedBy: { select: { id: true, name: true, email: true } },
@@ -42,18 +56,7 @@ export async function GET(req: NextRequest) {
       skip: offset
     })
 
-    const total = await prisma.call.count({
-      where: {
-        organizationId,
-        ...(botId && { botId }),
-        ...(role === "CUSTOMER" && {
-          OR: [
-            { initiatedById: userId },
-            { bot: { assignments: { some: { userId } } } }
-          ]
-        })
-      }
-    })
+    const total = await prisma.call.count({ where })
 
     return NextResponse.json({ calls, total, limit, offset })
   } catch (error) {
