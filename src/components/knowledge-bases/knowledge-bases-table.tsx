@@ -56,7 +56,6 @@ export default function KnowledgeBasesTable({
   onAssignChange
 }: KnowledgeBasesTableProps) {
   const [searchQuery, setSearchQuery] = useState("")
-  const [autoRefreshFilter, setAutoRefreshFilter] = useState<string>("all")
   const [botCountFilter, setBotCountFilter] = useState<string>("all")
   const [typeFilter, setTypeFilter] = useState<string>("all")
 
@@ -85,12 +84,6 @@ export default function KnowledgeBasesTable({
         searchQuery === "" ||
         kb.name.toLowerCase().includes(searchQuery.toLowerCase())
 
-      // Auto refresh filter
-      const matchesAutoRefresh =
-        autoRefreshFilter === "all" ||
-        (autoRefreshFilter === "enabled" && kb.enableAutoRefresh) ||
-        (autoRefreshFilter === "disabled" && !kb.enableAutoRefresh)
-
       // Bot count filter (1 KB → 1 agent)
       const hasAssignedBot = !!(kb.assignedBot || (kb._count?.bots ?? 0) > 0)
       const matchesBotCount =
@@ -105,19 +98,18 @@ export default function KnowledgeBasesTable({
         (typeFilter === "hotel" && kbType === "HOTEL") ||
         (typeFilter === "restaurant" && kbType === "RESTAURANT")
 
-      return matchesSearch && matchesAutoRefresh && matchesBotCount && matchesType
+      return matchesSearch && matchesBotCount && matchesType
     })
-  }, [knowledgeBases, searchQuery, autoRefreshFilter, botCountFilter, typeFilter])
+  }, [knowledgeBases, searchQuery, botCountFilter, typeFilter])
 
   const clearFilters = () => {
     setSearchQuery("")
-    setAutoRefreshFilter("all")
     setBotCountFilter("all")
     setTypeFilter("all")
   }
 
   const hasActiveFilters =
-    searchQuery !== "" || autoRefreshFilter !== "all" || botCountFilter !== "all" || typeFilter !== "all"
+    searchQuery !== "" || botCountFilter !== "all" || typeFilter !== "all"
 
   // Always show table, even if empty
 
@@ -135,16 +127,6 @@ export default function KnowledgeBasesTable({
               className="pl-10"
             />
           </div>
-          <Select value={autoRefreshFilter} onValueChange={setAutoRefreshFilter}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder="Auto Refresh" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tümü</SelectItem>
-              <SelectItem value="enabled">Aktif</SelectItem>
-              <SelectItem value="disabled">Pasif</SelectItem>
-            </SelectContent>
-          </Select>
           <Select value={botCountFilter} onValueChange={setBotCountFilter}>
             <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Bot Sayısı" />
@@ -192,7 +174,6 @@ export default function KnowledgeBasesTable({
               <TableHead className="min-w-[100px]">Tür</TableHead>
               <TableHead className="min-w-[120px] hidden">Chunk Sayısı</TableHead>
               <TableHead className="min-w-[140px]">Atanan Ajan</TableHead>
-              <TableHead className="min-w-[120px]">Auto Refresh</TableHead>
               <TableHead className="min-w-[150px]">Oluşturulma</TableHead>
               <TableHead className="min-w-[150px]">Güncelleme</TableHead>
                   {(onEdit || onDelete) && (
@@ -203,13 +184,13 @@ export default function KnowledgeBasesTable({
           <TableBody>
             {knowledgeBases.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={onEdit || onDelete ? 8 : 7} className="text-center py-12 text-gray-500">
+                <TableCell colSpan={onEdit || onDelete ? 7 : 6} className="text-center py-12 text-gray-500">
                   Henüz bilgi bankası yok
                 </TableCell>
               </TableRow>
             ) : filteredKnowledgeBases.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={onEdit || onDelete ? 8 : 7} className="text-center py-12 text-gray-500">
+                <TableCell colSpan={onEdit || onDelete ? 7 : 6} className="text-center py-12 text-gray-500">
                   Filtrelere uygun bilgi bankası bulunamadı
                 </TableCell>
               </TableRow>
@@ -265,14 +246,6 @@ export default function KnowledgeBasesTable({
                         {kb.assignedBot?.name ?? "Atanmamış"}
                       </span>
                     )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={kb.enableAutoRefresh ? "default" : "outline"}
-                      className={kb.enableAutoRefresh ? "bg-green-100 text-green-800" : ""}
-                    >
-                      {kb.enableAutoRefresh ? "Aktif" : "Pasif"}
-                    </Badge>
                   </TableCell>
                   <TableCell className="text-sm text-gray-500">
                     {new Date(kb.createdAt).toLocaleDateString("tr-TR", {

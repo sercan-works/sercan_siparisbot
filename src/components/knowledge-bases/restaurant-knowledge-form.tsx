@@ -182,7 +182,7 @@ export default function RestaurantKnowledgeForm({
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
-          {/* Name and Auto Refresh */}
+          {/* Name */}
           <div className="p-6 border-b space-y-4">
             <div>
               <Label htmlFor="name">
@@ -196,19 +196,6 @@ export default function RestaurantKnowledgeForm({
                 placeholder="Örn: Restoran Bilgileri"
                 className="mt-1"
               />
-            </div>
-            <div className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                id="autoRefresh"
-                checked={formData.enableAutoRefresh}
-                onChange={(e) => setFormData({ ...formData, enableAutoRefresh: e.target.checked })}
-                className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-              />
-              <Label htmlFor="autoRefresh" className="text-sm font-medium cursor-pointer">
-                Otomatik Yenileme
-
-              </Label>
             </div>
           </div>
 

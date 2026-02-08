@@ -427,8 +427,7 @@ interface KnowledgeBaseDialogProps {
 function KnowledgeBaseDialog({ knowledgeBase, onClose, onSuccess }: KnowledgeBaseDialogProps) {
   const [formData, setFormData] = useState({
     name: knowledgeBase?.name || "",
-    texts: knowledgeBase?.texts.join("\n\n---\n\n") || "",
-    enableAutoRefresh: knowledgeBase?.enableAutoRefresh || false
+    texts: knowledgeBase?.texts.join("\n\n---\n\n") || ""
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -451,7 +450,7 @@ function KnowledgeBaseDialog({ knowledgeBase, onClose, onSuccess }: KnowledgeBas
       const payload = {
         name: formData.name,
         texts,
-        enableAutoRefresh: formData.enableAutoRefresh
+        enableAutoRefresh: false
       }
 
       const url = knowledgeBase
@@ -533,19 +532,6 @@ Returns are accepted within 30 days of purchase."
             <p className="text-xs text-gray-500 mt-1">
               {formData.texts.split(/\n\n---\n\n/).filter(t => t.trim().length > 0).length} chunk(s)
             </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="autoRefresh"
-              checked={formData.enableAutoRefresh}
-              onChange={(e) => setFormData({ ...formData, enableAutoRefresh: e.target.checked })}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <label htmlFor="autoRefresh" className="text-sm font-medium">
-              Enable Auto Refresh
-            </label>
           </div>
 
           <div className="flex gap-3 pt-4">
